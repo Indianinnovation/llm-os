@@ -26,7 +26,6 @@ Exit code 0 = all checks passed.
 import argparse
 import json
 import re
-import socket
 import subprocess
 import sys
 import threading
@@ -36,11 +35,13 @@ from pathlib import Path
 
 import requests
 
+# Data-level probes: a bare TCP connect can be spoofed by local VPN
+# agents (e.g. Cisco AnyConnect accepts SYNs with no upstream link), so
+# "online" requires actually receiving response bytes from outside.
 EXTERNAL_PROBES = [
-    ("1.1.1.1", 443),
-    ("8.8.8.8", 53),
-    ("api.openai.com", 443),
-    ("github.com", 443),
+    "http://captive.apple.com",
+    "http://1.1.1.1",
+    "http://neverssl.com",
 ]
 COMPONENT_PORTS = [11434, 8000, 8501]  # engine, kernel, UI
 SAMPLE_INTERVAL_S = 0.3
@@ -71,12 +72,15 @@ def section(title):
 # --------------------------------------------------------------------------
 
 def machine_is_offline() -> bool:
-    """True if no external probe target is reachable."""
-    for host, port in EXTERNAL_PROBES:
+    """True only if no probe returns real data from the internet."""
+    import urllib.request
+
+    for url in EXTERNAL_PROBES:
         try:
-            socket.create_connection((host, port), timeout=3).close()
-            return False
-        except OSError:
+            with urllib.request.urlopen(url, timeout=4) as response:
+                if response.read(64):
+                    return False
+        except Exception:
             continue
     return True
 
