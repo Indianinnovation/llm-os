@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  # Container A: The Dedicated Inference Engine
+  llm-engine:
+    image: ollama/ollama:latest
+    container_name: llm_engine_cpu
+    volumes:
+      - ollama_storage:/root/.ollama
+    ports:
+      - "11434:11434"
+    # Hard bounds to prevent Mac freeze out
+    deploy:
+      resources:
+        limits:
+          cpus: '4'          # Limit to 4 CPU cores
+          memory: 4096M      # Maximum hard RAM limit for the model
+
+  # Container B: The LLM OS Kernel Logic & Tools
+  llm-os-kernel:
+    build: .
+    container_name: llm_os_core
+    depends_on:
+      - llm-engine
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./scratchpad:/app/scratchpad  # Isolated directory where local tools read/write
+    environment:
+      - OLLAMA_HOST=http://llm-engine:11434
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1024M
+
+volumes:
+  ollama_storage:
