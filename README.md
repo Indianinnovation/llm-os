@@ -161,6 +161,53 @@ chain, and proves nothing left the machine — two ways:
 
 A markdown report is written to `scratchpad/airplane_report.md`.
 
+## Your data: verifiable guarantees
+
+Cloud providers offer a *policy* ("we don't train on your data") that
+can change. LLM OS offers a *physical property* of frozen weights
+running offline — and every claim below is a command you can run, not
+a promise you have to trust.
+
+**1. The model cannot learn from your data.** Ollama runs GGUF weights
+through llama.cpp in inference-only mode: no training loop, no gradient
+code path, no way for a prompt to modify the model. Prove it — hash the
+weights, feed them a secret, hash again:
+
+```bash
+BLOB=$(ls -S ~/.ollama/models/blobs/sha256-* | head -1)
+shasum -a 256 "$BLOB"
+curl -s -X POST http://localhost:8000/chat -H 'Content-Type: application/json' \
+  -d '{"prompt": "My secret record number is MRN-778899. What is 12 times 12?"}'
+shasum -a 256 "$BLOB"   # byte-for-byte identical
+```
+
+**2. There is nowhere to send your data.** Every network destination in
+the codebase is loopback:
+
+```bash
+grep -rEoh "https?://[a-zA-Z0-9.-]+" llm_os/ ui/ examples/ --include="*.py" | sort -u
+# http://localhost:11434
+# http://localhost:8000
+```
+
+No vendor endpoint, no telemetry, no analytics. The airplane-mode
+script above verifies this at the network level on every run.
+
+**3. Everything the system knows about you is three local folders.**
+
+```bash
+du -sh scratchpad audit memory_store   # documents · audit log · memory
+rm -rf scratchpad audit memory_store   # …and now it knows nothing
+```
+
+Stored for your benefit (recall, audit), never transmitted, gone the
+moment you delete them.
+
+*Honest caveat:* the Ollama desktop app may check ollama.com for
+updates (connection metadata, never prompt content). The Docker
+topology eliminates even that — the engine runs on an `internal: true`
+network with no route out.
+
 ## Routing evals
 
 Small models route imperfectly; this repo measures it instead of hiding
