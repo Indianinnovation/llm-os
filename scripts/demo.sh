@@ -38,11 +38,19 @@ echo "${B}"
 echo "   🧠  LLM OS — private AI that provably never phones home"
 echo "${R}${D}       model · tools · memory · audit — all on this machine${R}"
 
-banner "① Proof this machine is OFFLINE"
+banner "① Going dark: disable the Wi-Fi radio, prove we're OFFLINE"
+WIFI_DEV=$(networksetup -listallhardwareports 2>/dev/null | awk '/Wi-Fi|AirPort/{getline; print $2; exit}')
 if ping -c 1 -t 2 1.1.1.1 >/dev/null 2>&1; then
-  echo "  ${Y}◦ machine is ONLINE — demo still works; egress will be monitored${R}"
+  if [ -n "$WIFI_DEV" ]; then
+    echo "  ${Y}› networksetup -setairportpower $WIFI_DEV off${R}"
+    networksetup -setairportpower "$WIFI_DEV" off 2>/dev/null
+    sleep 4
+  fi
+fi
+if ping -c 1 -t 2 1.1.1.1 >/dev/null 2>&1; then
+  echo "  ${Y}◦ still ONLINE (wired link?) — continuing; egress will be monitored instead${R}"
 else
-  echo "  ${G}✈  no route to the internet — TRUE AIRPLANE MODE${R}"
+  echo "  ${G}✈  Wi-Fi radio is OFF — no route to the internet — TRUE AIRPLANE MODE${R}"
 fi
 sleep 2
 
@@ -63,3 +71,5 @@ ask "What is the demo codeword?"
 banner "⑥ Full verification: every path + zero egress + audit chain"
 sleep 1
 $PY scripts/verify_airplane_mode.py
+
+echo "${D}(recording done? restore network: networksetup -setairportpower ${WIFI_DEV:-en0} on)${R}"
