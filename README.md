@@ -134,6 +134,27 @@ The model also gets two agentic memory tools: `remember` (save a
 durable fact) and `search_memory` (explicit lookup). Disable memory
 entirely with `LLM_OS_MEMORY=0`.
 
+## Prove it: airplane-mode verification
+
+"Zero egress" is a claim; this script is the proof:
+
+```bash
+python scripts/verify_airplane_mode.py
+```
+
+It exercises every routing path (calculator, sandboxed file writes, MCP
+tools, cross-request memory, plain chat), verifies the audit hash
+chain, and proves nothing left the machine — two ways:
+
+- **Machine online:** samples every TCP connection opened by the
+  engine, kernel and UI processes for the entire run and fails on any
+  non-loopback destination.
+- **Machine offline (turn Wi-Fi off):** true airplane mode — full
+  functionality with no internet route at all. This is the demo to
+  screen-record.
+
+A markdown report is written to `scratchpad/airplane_report.md`.
+
 ## Tests
 
 ```bash
@@ -149,7 +170,7 @@ chain tamper detection — all with a mocked LLM, no engine needed.
 
 - [x] MCP host: third-party tools plug in as MCP servers
 - [x] Episodic memory: local vector DB with MemGPT-style paging
-- [ ] Airplane-mode verification script (scripted proof of zero egress)
+- [x] Airplane-mode verification script (scripted proof of zero egress)
 - [ ] Routing accuracy eval harness across models/quantizations
 - [ ] Desktop installer (Tauri)
 
