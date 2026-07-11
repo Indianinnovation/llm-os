@@ -36,7 +36,8 @@ confidentiality obligations. LLM OS gives them agentic automation with:
 Requires [Ollama](https://ollama.com) with a tool-calling model:
 
 ```bash
-ollama pull llama3.2
+ollama pull llama3.2      # the routing model
+ollama pull all-minilm    # 46 MB embedding model for episodic memory
 
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -114,6 +115,25 @@ It works in reverse too: `python -m llm_os.mcp_server` exposes the LLM
 OS built-in tools (sandboxed calculator, jailed markdown writer) to any
 other MCP host, such as Claude Desktop.
 
+## Episodic memory (MemGPT-style paging)
+
+If the context window is RAM, the local vector store is disk. Every
+exchange is archived into a persistent ChromaDB collection under
+`memory_store/`, embedded by the local engine (`all-minilm`) — no
+external calls. Before routing a new prompt, the kernel **pages in**
+the most relevant memories (cosine-filtered) as context, so facts
+survive across sessions and restarts:
+
+```
+You  › Remember that my company is called Acme Legal.        (session 1)
+You  › What is my company called?                            (session 2)
+LLM OS › Your company is called Acme Legal.   🧠 paged in 1 memory
+```
+
+The model also gets two agentic memory tools: `remember` (save a
+durable fact) and `search_memory` (explicit lookup). Disable memory
+entirely with `LLM_OS_MEMORY=0`.
+
 ## Tests
 
 ```bash
@@ -128,7 +148,7 @@ chain tamper detection — all with a mocked LLM, no engine needed.
 ## Roadmap
 
 - [x] MCP host: third-party tools plug in as MCP servers
-- [ ] Episodic memory: local vector DB with MemGPT-style paging
+- [x] Episodic memory: local vector DB with MemGPT-style paging
 - [ ] Airplane-mode verification script (scripted proof of zero egress)
 - [ ] Routing accuracy eval harness across models/quantizations
 - [ ] Desktop installer (Tauri)

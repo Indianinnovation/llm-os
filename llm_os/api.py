@@ -9,7 +9,9 @@ from . import config
 from .audit import AuditLog
 from .kernel import Kernel
 from .mcp_client import MCPManager
+from .memory import create_memory
 from .tools import default_registry
+from .tools.memory_tools import memory_tools
 
 app = FastAPI(title="LLM OS Kernel", version="0.1.0")
 
@@ -21,10 +23,20 @@ _mcp: MCPManager = None
 def _startup() -> None:
     global _kernel, _mcp
     registry = default_registry()
+
+    memory = None
+    if config.MEMORY_ENABLED:
+        memory = create_memory(
+            config.MEMORY_DIR, config.OLLAMA_HOST, config.EMBED_MODEL
+        )
+        if memory is not None:
+            for tool in memory_tools(memory):
+                registry.register(tool)
+
     _mcp = MCPManager(config.MCP_CONFIG)
     _mcp.start()
     _mcp.register_tools(registry)
-    _kernel = Kernel(registry=registry)
+    _kernel = Kernel(registry=registry, memory=memory)
 
 
 @app.on_event("shutdown")
@@ -63,6 +75,12 @@ def health() -> dict:
         "active_model": config.MODEL_NAME,
         "available_models": models,
         "mcp_servers": mcp_servers,
+        "memory": {
+            "enabled": _kernel is not None and _kernel.memory is not None,
+            "records": _kernel.memory.count()
+            if _kernel is not None and _kernel.memory is not None
+            else 0,
+        },
     }
 
 

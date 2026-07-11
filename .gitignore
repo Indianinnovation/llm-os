@@ -9,6 +9,7 @@ venv/
 # Runtime data — never commit user data or logs
 scratchpad/
 audit/
+memory_store/
 .cache/
 
 # OS / editor

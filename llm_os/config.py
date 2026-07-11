@@ -13,6 +13,11 @@ BASE_DIR = Path(os.environ.get("LLM_OS_HOME", Path(__file__).resolve().parent.pa
 SCRATCHPAD_DIR = Path(os.environ.get("SCRATCHPAD_DIR", BASE_DIR / "scratchpad"))
 AUDIT_DIR = Path(os.environ.get("AUDIT_DIR", BASE_DIR / "audit"))
 
+# Episodic memory (local vector store + Ollama embeddings).
+MEMORY_DIR = Path(os.environ.get("MEMORY_DIR", BASE_DIR / "memory_store"))
+EMBED_MODEL = os.environ.get("LLM_OS_EMBED_MODEL", "all-minilm")
+MEMORY_ENABLED = os.environ.get("LLM_OS_MEMORY", "1") == "1"
+
 # MCP server definitions, Claude-Desktop-compatible {"mcpServers": {...}}.
 MCP_CONFIG = Path(os.environ.get("MCP_CONFIG", BASE_DIR / "mcp_servers.json"))
 

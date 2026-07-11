@@ -75,9 +75,16 @@ with st.sidebar:
     st.caption("Private, local-first agentic kernel. Zero egress.")
 
     engine_ok = health.get("engine") == "ok"
+    memory_info = health.get("memory", {})
+    memory_line = (
+        f"🧠 {memory_info.get('records', 0)} records"
+        if memory_info.get("enabled")
+        else "disabled"
+    )
     st.markdown(
         f"**Engine:** {'🟢' if engine_ok else '🔴'} {health.get('engine')}  \n"
-        f"**Model:** `{health.get('active_model')}`"
+        f"**Model:** `{health.get('active_model')}`  \n"
+        f"**Memory:** {memory_line}"
     )
     st.divider()
 
@@ -114,13 +121,23 @@ with st.sidebar:
             st.caption(f"`{record['ts']}` · {record['event']} · {record.get('tool', '')}")
 
 
+def render_trace(trace: list, memories: list) -> None:
+    if memories:
+        with st.expander(f"🧠 Paged in {len(memories)} memories"):
+            for m in memories:
+                st.markdown(f"- *({m['ts']})* {m['text']}")
+    for step in trace:
+        icon = "✅" if step["status"] == "success" else "⚠️"
+        with st.expander(
+            f"{icon} Routed to `{step['tool']}` · audit `{step.get('audit_id', '-')}`"
+        ):
+            st.json({"params": step["params"], "result": step["result"]})
+
+
 def render_message(message: dict) -> None:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-        for step in message.get("trace", []):
-            icon = "✅" if step["status"] == "success" else "⚠️"
-            with st.expander(f"{icon} Routed to `{step['tool']}` · audit `{step.get('audit_id', '-')}`"):
-                st.json({"params": step["params"], "result": step["result"]})
+        render_trace(message.get("trace", []), message.get("memories", []))
 
 
 if not st.session_state.messages:
@@ -165,14 +182,14 @@ if prompt:
                 result = kernel_chat(prompt)
                 reply = result.get("reply") or "*(empty reply)*"
                 st.markdown(reply)
-                for step in result.get("trace", []):
-                    icon = "✅" if step["status"] == "success" else "⚠️"
-                    with st.expander(
-                        f"{icon} Routed to `{step['tool']}` · audit `{step.get('audit_id', '-')}`"
-                    ):
-                        st.json({"params": step["params"], "result": step["result"]})
+                render_trace(result.get("trace", []), result.get("memories", []))
                 st.session_state.messages.append(
-                    {"role": "assistant", "content": reply, "trace": result.get("trace", [])}
+                    {
+                        "role": "assistant",
+                        "content": reply,
+                        "trace": result.get("trace", []),
+                        "memories": result.get("memories", []),
+                    }
                 )
             except requests.RequestException as exc:
                 st.error(f"Kernel request failed: {exc}")

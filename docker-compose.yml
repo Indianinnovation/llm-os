@@ -23,9 +23,11 @@ services:
       - LLM_OS_MODEL=${LLM_OS_MODEL:-llama3.2}
       - SCRATCHPAD_DIR=/app/scratchpad
       - AUDIT_DIR=/app/audit
+      - MEMORY_DIR=/app/memory_store
     volumes:
       - ./scratchpad:/app/scratchpad
       - ./audit:/app/audit
+      - ./memory_store:/app/memory_store
     networks: [llmos_internal, llmos_edge]
     ports:
       - "127.0.0.1:8000:8000"

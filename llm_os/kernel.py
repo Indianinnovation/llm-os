@@ -15,6 +15,7 @@ from ollama import Client
 
 from . import config
 from .audit import AuditLog
+from .memory import EpisodicMemory
 from .registry import ToolError, ToolRegistry
 from .tools import default_registry
 
@@ -24,6 +25,7 @@ Rules:
 - For any calculation, ALWAYS call the calculator tool. Never do arithmetic yourself.
 - When the user asks to write, save, or generate a document/note/report as a file, ALWAYS call the write_markdown tool.
 - If another available tool matches the user's request (for example system or time information), call that tool instead of guessing.
+- When the user asks you to remember something, or tells you a lasting fact about themselves or their work, call the remember tool with that fact.
 - For general questions with no matching tool, answer directly and concisely.
 - Never claim to have created a file or computed a result unless a tool actually returned it.
 """
@@ -43,19 +45,51 @@ class Kernel:
         client: Optional[Client] = None,
         model: str = config.MODEL_NAME,
         audit: Optional[AuditLog] = None,
+        memory: Optional[EpisodicMemory] = None,
     ):
         self.registry = registry or default_registry()
         self.client = client or Client(host=config.OLLAMA_HOST)
         self.model = model
         self.audit = audit or AuditLog(config.AUDIT_DIR)
+        self.memory = memory
+
+    def _page_in_memories(self, prompt: str) -> list:
+        """MemGPT-style paging: pull relevant long-term memories into the
+        context window for this request."""
+        if self.memory is None:
+            return []
+        try:
+            return self.memory.recall(prompt)
+        except Exception as exc:  # memory failures must never block routing
+            self.audit.append("memory_error", {"stage": "recall", "error": str(exc)})
+            return []
+
+    def _archive_exchange(self, prompt: str, reply: str) -> None:
+        if self.memory is None or not reply:
+            return
+        try:
+            self.memory.archive(f"User said: {prompt}\nAssistant replied: {reply}")
+        except Exception as exc:
+            self.audit.append("memory_error", {"stage": "archive", "error": str(exc)})
 
     def handle(self, prompt: str) -> dict:
         """Route one user prompt; returns reply text plus the full trace."""
         started = time.time()
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        memories = self._page_in_memories(prompt)
+        if memories:
+            recalled = "\n".join(f"- ({m['ts']}) {m['text']}" for m in memories)
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Possibly relevant memories from previous sessions "
+                        "(ignore any that do not apply):\n" + recalled
+                    ),
+                }
+            )
+        messages.append({"role": "user", "content": prompt})
         trace = []
 
         for _ in range(config.MAX_TOOL_CALLS):
@@ -69,9 +103,14 @@ class Kernel:
                 reply = (_get(message, "content") or "").strip()
                 self.audit.append(
                     "chat" if not trace else "chat_after_tools",
-                    {"prompt": prompt, "tools_used": [t["tool"] for t in trace]},
+                    {
+                        "prompt": prompt,
+                        "tools_used": [t["tool"] for t in trace],
+                        "memories_recalled": len(memories),
+                    },
                 )
-                return self._result(reply, trace, started)
+                self._archive_exchange(prompt, reply)
+                return self._result(reply, trace, memories, started)
 
             messages.append(
                 {
@@ -109,7 +148,7 @@ class Kernel:
 
         # Tool-call budget exhausted; return whatever we have.
         return self._result(
-            "I hit the tool-call limit for a single request.", trace, started
+            "I hit the tool-call limit for a single request.", trace, memories, started
         )
 
     def _execute(self, name: str, args: dict, prompt: str) -> dict:
@@ -147,10 +186,13 @@ class Kernel:
             "audit_id": audit_id,
         }
 
-    def _result(self, reply: str, trace: list, started: float) -> dict:
+    def _result(
+        self, reply: str, trace: list, memories: list, started: float
+    ) -> dict:
         return {
             "reply": reply,
             "trace": trace,
+            "memories": memories,
             "model": self.model,
             "duration_ms": round((time.time() - started) * 1000, 1),
         }
