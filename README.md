@@ -2,6 +2,10 @@
 
 **Everything runs on your machine. Nothing leaves it.**
 
+![90-second demo: Wi-Fi switched off on camera, every routing path exercised, zero egress verified live](docs/demo.gif)
+
+*One unedited take: Wi-Fi toggled off on camera → **TRUE AIRPLANE MODE** → math routing, sandboxed file generation, MCP disk tools, cross-session memory — then the verification suite passes with zero non-loopback connections. Full-resolution video: [docs/demo.mp4](docs/demo.mp4). Reproduce it yourself: `./scripts/demo.sh`.*
+
 LLM OS is an implementation of [Andrej Karpathy's LLM OS idea](https://x.com/karpathy/status/1723140519554105733) built for one uncompromising constraint: **zero egress**. A small local language model acts as the CPU — it only *routes intent*. Deterministic, sandboxed tools do the actual work, and every decision is written to a tamper-evident audit log.
 
 ```
