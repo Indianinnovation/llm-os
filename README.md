@@ -87,6 +87,33 @@ parameter model, and a handler (see `llm_os/tools/calculator.py`), then
 register it in `llm_os/tools/__init__.py`. Parameters are validated
 before your handler runs; execution is automatically audit-logged.
 
+## MCP: plug in any local tool server
+
+The kernel is an **MCP host**. Drop server definitions into
+`mcp_servers.json` using the same format as Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "system-info": {
+      "command": "python",
+      "args": ["examples/system_info_server.py"]
+    }
+  }
+}
+```
+
+On startup the kernel spawns each server over stdio, discovers its
+tools, and routes to them exactly like built-ins — every call still
+lands in the hash-chained audit log. `GET /tools` labels each tool's
+origin (`builtin` vs `mcp:<server>`). The bundled example server
+(`examples/system_info_server.py`) is fully offline: local time, disk
+usage, system info.
+
+It works in reverse too: `python -m llm_os.mcp_server` exposes the LLM
+OS built-in tools (sandboxed calculator, jailed markdown writer) to any
+other MCP host, such as Claude Desktop.
+
 ## Tests
 
 ```bash
@@ -100,7 +127,7 @@ chain tamper detection — all with a mocked LLM, no engine needed.
 
 ## Roadmap
 
-- [ ] MCP host: third-party tools plug in as MCP servers
+- [x] MCP host: third-party tools plug in as MCP servers
 - [ ] Episodic memory: local vector DB with MemGPT-style paging
 - [ ] Airplane-mode verification script (scripted proof of zero egress)
 - [ ] Routing accuracy eval harness across models/quantizations

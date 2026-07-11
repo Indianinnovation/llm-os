@@ -7,6 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY llm_os/ llm_os/
 COPY ui/ ui/
+COPY examples/ examples/
+COPY mcp_servers.json .
 COPY .streamlit/ .streamlit/
 
 # Default command runs the kernel API; the UI service overrides this in compose.

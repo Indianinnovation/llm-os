@@ -1,15 +1,19 @@
-"""Tool registry — the seam where MCP slots in later.
+"""Tool registry.
 
-A Tool is a name, a description, a Pydantic parameter model, and a
-handler. Parameters coming from the model are validated before the
-handler ever runs; the registry emits Ollama-native tool specs derived
-from the same Pydantic schema, so there is a single source of truth.
+A Tool is a name, a description, a parameter contract, and a handler.
+Built-in tools declare a Pydantic model and get validated before the
+handler runs. MCP tools arrive with a ready-made JSON Schema from their
+server (which validates its own inputs), so they carry `json_schema`
+instead. Either way the registry emits Ollama-native tool specs from a
+single source of truth, and every tool is labelled with its origin.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Type
 
 from pydantic import BaseModel, ValidationError
+
+_EMPTY_SCHEMA = {"type": "object", "properties": {}}
 
 
 class ToolError(Exception):
@@ -20,12 +24,17 @@ class ToolError(Exception):
 class Tool:
     name: str
     description: str
-    parameters: Type[BaseModel]
     handler: Callable[..., Any]
+    parameters: Optional[Type[BaseModel]] = None
+    json_schema: Optional[dict] = None
+    source: str = "builtin"
 
     def spec(self) -> dict:
-        schema = self.parameters.model_json_schema()
-        schema.pop("title", None)
+        if self.parameters is not None:
+            schema = self.parameters.model_json_schema()
+            schema.pop("title", None)
+        else:
+            schema = self.json_schema or dict(_EMPTY_SCHEMA)
         return {
             "type": "function",
             "function": {
@@ -36,8 +45,11 @@ class Tool:
         }
 
     def run(self, raw_params: Dict[str, Any]) -> Any:
+        raw_params = raw_params or {}
+        if self.parameters is None:
+            return self.handler(**raw_params)
         try:
-            validated = self.parameters(**(raw_params or {}))
+            validated = self.parameters(**raw_params)
         except ValidationError as exc:
             errors = "; ".join(
                 f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}"
@@ -64,6 +76,6 @@ class ToolRegistry:
 
     def describe(self) -> List[dict]:
         return [
-            {"name": t.name, "description": t.description}
+            {"name": t.name, "description": t.description, "source": t.source}
             for t in self._tools.values()
         ]

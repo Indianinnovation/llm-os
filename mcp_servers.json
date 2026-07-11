@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "system-info": {
+      "command": "python",
+      "args": ["examples/system_info_server.py"]
+    }
+  }
+}

@@ -13,6 +13,9 @@ BASE_DIR = Path(os.environ.get("LLM_OS_HOME", Path(__file__).resolve().parent.pa
 SCRATCHPAD_DIR = Path(os.environ.get("SCRATCHPAD_DIR", BASE_DIR / "scratchpad"))
 AUDIT_DIR = Path(os.environ.get("AUDIT_DIR", BASE_DIR / "audit"))
 
+# MCP server definitions, Claude-Desktop-compatible {"mcpServers": {...}}.
+MCP_CONFIG = Path(os.environ.get("MCP_CONFIG", BASE_DIR / "mcp_servers.json"))
+
 # Kernel API endpoint (used by the UI).
 KERNEL_URL = os.environ.get("KERNEL_URL", "http://localhost:8000")
 

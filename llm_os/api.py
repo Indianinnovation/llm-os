@@ -8,16 +8,29 @@ from pydantic import BaseModel, Field
 from . import config
 from .audit import AuditLog
 from .kernel import Kernel
+from .mcp_client import MCPManager
+from .tools import default_registry
 
 app = FastAPI(title="LLM OS Kernel", version="0.1.0")
 
 _kernel: Kernel = None  # initialized on startup so tests can inject their own
+_mcp: MCPManager = None
 
 
 @app.on_event("startup")
 def _startup() -> None:
-    global _kernel
-    _kernel = Kernel()
+    global _kernel, _mcp
+    registry = default_registry()
+    _mcp = MCPManager(config.MCP_CONFIG)
+    _mcp.start()
+    _mcp.register_tools(registry)
+    _kernel = Kernel(registry=registry)
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    if _mcp is not None:
+        _mcp.shutdown()
 
 
 class ChatRequest(BaseModel):
@@ -40,12 +53,16 @@ def health() -> dict:
         models = [m["name"] for m in response.json().get("models", [])] if engine_ok else []
     except requests.RequestException:
         engine_ok, models = False, []
+    mcp_servers = sorted(
+        {t["server"] for t in _mcp.discovered} if _mcp else set()
+    )
     return {
         "kernel": "ok",
         "engine": "ok" if engine_ok else "unreachable",
         "engine_host": config.OLLAMA_HOST,
         "active_model": config.MODEL_NAME,
         "available_models": models,
+        "mcp_servers": mcp_servers,
     }
 
 

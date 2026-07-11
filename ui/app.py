@@ -83,7 +83,8 @@ with st.sidebar:
 
     st.markdown("**🔧 Registered tools**")
     for tool in kernel_get("/tools") or []:
-        st.markdown(f"- `{tool['name']}`")
+        badge = "" if tool.get("source", "builtin") == "builtin" else f" · _{tool['source']}_"
+        st.markdown(f"- `{tool['name']}`{badge}")
     st.divider()
 
     if st.button("➕ New chat", use_container_width=True):
