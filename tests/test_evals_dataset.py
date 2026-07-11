@@ -18,6 +18,13 @@ VALID_TOOLS = {
     "get_cell_kpis",
     "get_active_alarms",
     "get_recent_logs",
+    "search_specs",
+    "get_kpi_trend",
+    "analyze_cluster_impact",
+    "monitor_sweep",
+    "get_status_history",
+    "generate_incident_report",
+    "audit_cell_config",
     None,
 }
 

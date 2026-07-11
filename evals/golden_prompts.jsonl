@@ -45,6 +45,20 @@
 {"id": "tel-05", "category": "telecom", "prompt": "Show me the KPIs for CELL_005.", "expect": {"tool": "get_cell_kpis"}}
 {"id": "tel-06", "category": "telecom", "prompt": "Are there any active alarms on cell 7?", "expect": {"tool": "get_active_alarms"}}
 {"id": "tel-07", "category": "telecom", "prompt": "Show recent log entries for cell 2.", "expect": {"tool": "get_recent_logs"}}
-{"id": "tel-08", "category": "telecom", "prompt": "What does PRB utilization mean in 5G?", "expect": {"tool": null}}
-{"id": "tel-09", "category": "telecom", "prompt": "Explain the difference between BLER and SINR in one sentence.", "expect": {"tool": null}}
+{"id": "tel-08", "category": "telecom", "prompt": "What does PRB utilization mean in 5G?", "expect": {"tool": ["search_specs"], "allow_no_tool": true}}
+{"id": "tel-09", "category": "telecom", "prompt": "Explain the difference between BLER and SINR in one sentence.", "expect": {"tool": ["search_specs"], "allow_no_tool": true}}
 {"id": "tel-10", "category": "telecom", "prompt": "Give me the root cause of the degradation on cell 5 and how to fix it.", "expect": {"tool": "diagnose_cell"}}
+{"id": "tel-11", "category": "telecom", "prompt": "What does the 3GPP spec say about radio link failure detection?", "expect": {"tool": "search_specs"}}
+{"id": "tel-12", "category": "telecom", "prompt": "According to the spec, what BLER should link adaptation target?", "expect": {"tool": "search_specs"}}
+{"id": "tel-13", "category": "telecom", "prompt": "When did cell 3 start degrading? Show me the KPI trend.", "expect": {"tool": "get_kpi_trend"}}
+{"id": "tel-14", "category": "telecom", "prompt": "Is the throughput on cell 1 getting worse over time?", "expect": {"tool": "get_kpi_trend"}}
+{"id": "tel-15", "category": "telecom", "prompt": "Is the problem on cell 3 isolated to that cell or is the whole site affected?", "expect": {"tool": "analyze_cluster_impact"}}
+{"id": "tel-16", "category": "telecom", "prompt": "Are the neighboring cells of cell 5 also impacted?", "expect": {"tool": "analyze_cluster_impact"}}
+{"id": "tel-17", "category": "telecom", "prompt": "Run a monitoring sweep \u2014 did anything change since the last check?", "expect": {"tool": ["monitor_sweep", "network_health_check"]}}
+{"id": "tel-18", "category": "telecom", "prompt": "Has cell 3 degraded before? Show its status history.", "expect": {"tool": "get_status_history"}}
+{"id": "tel-19", "category": "telecom", "prompt": "Generate an incident report for cell 7.", "expect": {"tool": "generate_incident_report"}}
+{"id": "tel-20", "category": "telecom", "prompt": "Audit the configuration of cell 1.", "expect": {"tool": "audit_cell_config"}}
+{"id": "tel-21", "category": "telecom", "prompt": "Is cell 2 misconfigured? Check its config against the baseline.", "expect": {"tool": "audit_cell_config"}}
+{"id": "tel-22", "category": "telecom", "prompt": "What is a handover in a cellular network? One sentence.", "expect": {"tool": ["search_specs"], "allow_no_tool": true}}
+{"id": "tel-23", "category": "telecom", "prompt": "Explain what an incident report is, in general terms.", "expect": {"tool": null}}
+{"id": "tel-24", "category": "telecom", "prompt": "What does RRC stand for in 5G?", "expect": {"tool": ["search_specs"], "allow_no_tool": true}}

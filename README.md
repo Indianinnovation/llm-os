@@ -295,9 +295,10 @@ this entire class of connection structurally impossible.
 ## Routing evals
 
 Small models route imperfectly; this repo measures it instead of hiding
-it. A 40-prompt golden set (including trap prompts that mention
-calculators, disks and files but need **no** tool) scores tool
-selection, execution success, and exact math results:
+it. A 64-prompt golden set across 6 categories (including trap prompts
+that mention calculators, disks and files but need **no** tool, and a
+24-prompt telecom category exercising the TelecomOS toolset) scores
+tool selection, execution success, and exact math results:
 
 ```bash
 python scripts/run_evals.py --models llama3.2,qwen2.5-coder

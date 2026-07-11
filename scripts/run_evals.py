@@ -94,7 +94,11 @@ def score_item(item: dict, result: dict) -> dict:
         routed_ok = not tools_called
     else:
         allowed = expected_tool if isinstance(expected_tool, list) else [expected_tool]
-        routed_ok = any(t in allowed for t in tools_called)
+        routed_ok = any(t in allowed for t in tools_called) or (
+            # e.g. definitional questions: answering directly OR looking
+            # up the reference library are both correct behaviors.
+            bool(expect.get("allow_no_tool")) and not tools_called
+        )
 
     exec_ok = all(t["status"] == "success" for t in trace)
 
