@@ -203,10 +203,35 @@ rm -rf scratchpad audit memory_store   # …and now it knows nothing
 Stored for your benefit (recall, audit), never transmitted, gone the
 moment you delete them.
 
-*Honest caveat:* the Ollama desktop app may check ollama.com for
-updates (connection metadata, never prompt content). The Docker
-topology eliminates even that — the engine runs on an `internal: true`
-network with no route out.
+### Hardened native mode: no vendor connection at all
+
+*The caveat, found live:* the Ollama **desktop app** auto-updates, and
+we caught its engine process holding a TLS connection to `ollama.com`
+(verified via certificate CN) on a dev machine. It's connection
+metadata, never prompt content — but a privacy-first stack shouldn't
+have a live channel to any vendor. The fix is to skip the desktop app
+and run the bare daemon (same binary, same models, no updater):
+
+```bash
+# 1. Quit the Ollama menu-bar app, and remove it from
+#    System Settings → General → Login Items
+# 2. Run the bare server, bound to loopback only:
+OLLAMA_HOST=127.0.0.1:11434 ollama serve
+# 3. Verify: zero non-loopback connections, before and after inference
+lsof -n -P -i TCP -a -p $(pgrep -f "ollama serve") | grep -v 127.0.0.1
+```
+
+The bare daemon only touches the network when you explicitly
+`ollama pull`. Optionally block the vendor domain outright
+(model pulls via `registry.ollama.ai` keep working):
+
+```bash
+sudo sh -c 'echo "0.0.0.0 ollama.com www.ollama.com" >> /etc/hosts'
+```
+
+For client/production deployments, use the Docker topology — the
+engine lives on an `internal: true` network with no route out, making
+this entire class of connection structurally impossible.
 
 ## Routing evals
 
