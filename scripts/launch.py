@@ -122,10 +122,20 @@ def main() -> int:
     parser.add_argument("--docker", action="store_true", help="launch the Docker sandbox")
     parser.add_argument("--check-only", action="store_true", help="report and exit")
     parser.add_argument("--stop", action="store_true", help="stop native kernel + UI")
+    parser.add_argument("--approve-models", action="store_true",
+                        help="pin the digests of all models currently in the engine")
     args = parser.parse_args()
 
     if args.stop:
         return stop()
+
+    if args.approve_models:
+        from llm_os import modeltrust
+        approved = modeltrust.approve_current()
+        print(f"{GREEN}Pinned {len(approved)} model(s) in model_manifest.json:{RESET}")
+        for name, digest in approved.items():
+            print(f"  {name:<36} {DIM}{digest[:24]}…{RESET}")
+        return 0
 
     report = run_preflight("docker" if args.docker else "native")
     print_report(report)

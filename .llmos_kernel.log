@@ -1,0 +1,11 @@
+INFO:     Started server process [77559]
+INFO:     Waiting for application startup.
+[07/11/26 09:00:24] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[07/11/26 09:00:25] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:59354 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59363 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59367 - "GET /audit?n=15 HTTP/1.1" 200 OK

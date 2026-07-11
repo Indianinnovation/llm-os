@@ -220,6 +220,27 @@ rm -rf scratchpad audit memory_store   # …and now it knows nothing
 Stored for your benefit (recall, audit), never transmitted, gone the
 moment you delete them.
 
+### Untrusted-model containment
+
+LLM OS assumes the model itself could be wrong, tampered with, or
+malicious — and contains it mechanically, so **switching models never
+changes the security posture**:
+
+- **The model can only emit tool calls, never execute.** Parameters are
+  schema-validated; tools are deny-by-default (only registered ones
+  exist), sandboxed, and audited.
+- **Model digest pinning.** `model_manifest.json` pins the SHA-256
+  digest of every approved model. At startup the kernel verifies the
+  active model against its pin and **refuses to serve** on any
+  mismatch — a swapped, re-tagged, or silently updated model file
+  cannot run. Approving models is an explicit human action:
+  `python scripts/launch.py --approve-models`.
+- **Continuous egress sentinel.** A watchdog inside the kernel samples
+  the TCP connections of the whole stack (kernel, MCP servers, engine)
+  every few seconds; any non-loopback destination is written to the
+  tamper-evident audit chain as an `egress_violation` and surfaced on
+  `/health`. Nothing can leak quietly between airplane-mode runs.
+
 ### Hardened native mode: no vendor connection at all
 
 *The caveat, found live:* the Ollama **desktop app** auto-updates, and

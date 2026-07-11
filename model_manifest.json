@@ -1,0 +1,9 @@
+{
+  "_comment": "Models approved to run. Digests are pinned; re-approve deliberately after any model update.",
+  "approved_models": {
+    "Orgnational/minicpm5-1b:latest": "a3e0c294283a8bc02700301169a140439a0dca68da868cb9dee5c93b81eb8908",
+    "all-minilm:latest": "1b226e2802dbb772b5fc32a58f103ca1804ef7501331012de126ab22f67475ef",
+    "qwen2.5-coder:latest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+    "llama3.2:latest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72"
+  }
+}

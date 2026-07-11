@@ -5,11 +5,12 @@ import requests
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from . import config
+from . import config, modeltrust
 from .audit import AuditLog
 from .kernel import Kernel
 from .mcp_client import MCPManager
 from .memory import create_memory
+from .sentinel import EgressSentinel
 from .tools import default_registry
 from .tools.memory_tools import memory_tools
 
@@ -17,11 +18,31 @@ app = FastAPI(title="LLM OS Kernel", version="0.1.0")
 
 _kernel: Kernel = None  # initialized on startup so tests can inject their own
 _mcp: MCPManager = None
+_sentinel: EgressSentinel = None
+
+
+def _verify_model_or_die(audit: AuditLog) -> None:
+    """Untrusted-model gate: the active model must match its pinned
+    digest. Verification outcome is always audited; a FAIL refuses to
+    serve. No manifest at all is allowed (dev mode) but audited."""
+    try:
+        models = modeltrust.engine_models()
+    except Exception as exc:
+        audit.append("model_verification", {"status": "SKIP", "detail": str(exc)})
+        return
+    status, detail = modeltrust.verify_model(config.MODEL_NAME, models)
+    audit.append("model_verification", {"status": status, "detail": detail})
+    if status == modeltrust.FAIL:
+        raise RuntimeError(f"Model trust verification failed: {detail}")
 
 
 @app.on_event("startup")
 def _startup() -> None:
-    global _kernel, _mcp
+    global _kernel, _mcp, _sentinel
+    audit = AuditLog(config.AUDIT_DIR)
+    _verify_model_or_die(audit)
+    _sentinel = EgressSentinel(audit)
+    _sentinel.start()
     registry = default_registry()
 
     memory = None
@@ -36,11 +57,13 @@ def _startup() -> None:
     _mcp = MCPManager(config.MCP_CONFIG)
     _mcp.start()
     _mcp.register_tools(registry)
-    _kernel = Kernel(registry=registry, memory=memory)
+    _kernel = Kernel(registry=registry, memory=memory, audit=audit)
 
 
 @app.on_event("shutdown")
 def _shutdown() -> None:
+    if _sentinel is not None:
+        _sentinel.stop()
     if _mcp is not None:
         _mcp.shutdown()
 
@@ -81,6 +104,8 @@ def health() -> dict:
             if _kernel is not None and _kernel.memory is not None
             else 0,
         },
+        "model_pinning": "enforced" if modeltrust.load_manifest() is not None else "unpinned",
+        "egress_sentinel": _sentinel.status() if _sentinel else {"active": False},
     }
 
 

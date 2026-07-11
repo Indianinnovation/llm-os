@@ -17,7 +17,7 @@ from typing import List
 
 import requests
 
-from . import config
+from . import config, modeltrust
 
 PASS, WARN, FAIL = "PASS", "WARN", "FAIL"
 
@@ -106,6 +106,18 @@ def check_models(report: PreflightReport, tags: list) -> None:
             f"'{config.EMBED_MODEL}' missing — episodic memory will be disabled",
             f"ollama pull {config.EMBED_MODEL}",
         )
+
+
+def check_model_integrity(report: PreflightReport) -> None:
+    try:
+        models = modeltrust.engine_models()
+    except requests.RequestException:
+        return  # engine check already reported the failure
+    status, detail = modeltrust.verify_model(config.MODEL_NAME, models)
+    hint = ""
+    if status != PASS:
+        hint = "Approve current models deliberately: python scripts/launch.py --approve-models"
+    report.add("Model digest pinned", status, detail, hint)
 
 
 def check_desktop_app(report: PreflightReport) -> None:
@@ -247,6 +259,7 @@ def run_preflight(mode: str = "native") -> PreflightReport:
     tags = check_engine(report)
     if tags:
         check_models(report, tags)
+        check_model_integrity(report)
     check_desktop_app(report)
     check_engine_loopback(report)
     check_engine_egress(report)
