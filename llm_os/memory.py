@@ -58,7 +58,13 @@ class EpisodicMemory:
         if not CHROMADB_AVAILABLE:
             raise RuntimeError("chromadb is not installed.")
         self.embedder = embedder
-        self._client = chromadb.PersistentClient(path=str(persist_dir))
+        # ChromaDB ships product telemetry (PostHog) enabled by default.
+        # In this environment it happens to be inert (the posthog package
+        # is absent), but we disable it by policy, not by accident.
+        self._client = chromadb.PersistentClient(
+            path=str(persist_dir),
+            settings=chromadb.Settings(anonymized_telemetry=False),
+        )
         self._collection = self._client.get_or_create_collection(
             name="episodic_memory", metadata={"hnsw:space": "cosine"}
         )

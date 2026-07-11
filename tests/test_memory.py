@@ -34,6 +34,12 @@ def memory(tmp_path):
     return EpisodicMemory(tmp_path / "store", embedder=fake_embedder)
 
 
+def test_vendor_telemetry_is_disabled_by_policy(memory):
+    """ChromaDB ships PostHog telemetry enabled by default; our client
+    must always construct with it off."""
+    assert memory._client.get_settings().anonymized_telemetry is False
+
+
 def test_archive_and_recall_roundtrip(memory):
     memory.archive("The user's company is called Acme Legal.", kind="fact")
     memory.archive("Completely unrelated gardening tulip bulbs.", kind="episode")

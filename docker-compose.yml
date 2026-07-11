@@ -24,6 +24,7 @@ services:
       - SCRATCHPAD_DIR=/app/scratchpad
       - AUDIT_DIR=/app/audit
       - MEMORY_DIR=/app/memory_store
+      - ANONYMIZED_TELEMETRY=False  # belt-and-braces: chromadb telemetry off
     volumes:
       - ./scratchpad:/app/scratchpad
       - ./audit:/app/audit

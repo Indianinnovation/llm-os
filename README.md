@@ -193,6 +193,13 @@ grep -rEoh "https?://[a-zA-Z0-9.-]+" llm_os/ ui/ examples/ --include="*.py" | so
 No vendor endpoint, no telemetry, no analytics. The airplane-mode
 script above verifies this at the network level on every run.
 
+This includes third-party libraries, which we audit rather than trust:
+ChromaDB ships PostHog product telemetry **enabled by default** and
+Streamlit gathers usage statistics **by default** — both are disabled
+by policy here (`anonymized_telemetry=False` in the memory client,
+`gatherUsageStats = false` in `.streamlit/config.toml`), with a
+regression test so neither can silently return.
+
 **3. Everything the system knows about you is three local folders.**
 
 ```bash

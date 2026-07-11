@@ -1,3 +1,7 @@
+# Privacy: never send usage statistics (Streamlit's default is true).
+[browser]
+gatherUsageStats = false
+
 [theme]
 base = "light"
 primaryColor = "#1E88E5"
