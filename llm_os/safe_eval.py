@@ -9,6 +9,7 @@ lambdas, imports) are rejected at the syntax level.
 
 import ast
 import math
+import re
 
 MAX_EXPRESSION_LENGTH = 500
 # Bounds that keep Pow from allocating astronomically large ints.
@@ -71,6 +72,17 @@ def safe_eval(expression: str) -> float:
         raise UnsafeExpressionError(
             f"Expression exceeds {MAX_EXPRESSION_LENGTH} characters."
         )
+    # Normalize math notation LLMs commonly emit into Python syntax.
+    # '^' must be rewritten textually (not at AST level): as BitXor it
+    # binds looser than '+', which would silently mis-evaluate 5^2 + 12^2.
+    expression = (
+        expression.replace("√", "sqrt")
+        .replace("×", "*")
+        .replace("÷", "/")
+        .replace("^", "**")
+        .replace("math.", "")
+    )
+    expression = re.sub(r"(\d+)\s*!", r"factorial(\1)", expression)
     try:
         tree = ast.parse(expression.strip(), mode="eval")
     except SyntaxError as exc:

@@ -1,0 +1,40 @@
+{"id": "calc-01", "category": "calculator", "prompt": "What is 4539 multiplied by 23?", "expect": {"tool": "calculator", "result_approx": 104397}}
+{"id": "calc-02", "category": "calculator", "prompt": "Compute 15% of 2400.", "expect": {"tool": "calculator", "result_approx": 360}}
+{"id": "calc-03", "category": "calculator", "prompt": "What is the square root of 1764?", "expect": {"tool": "calculator", "result_approx": 42}}
+{"id": "calc-04", "category": "calculator", "prompt": "If a right triangle has legs 5 and 12, how long is the hypotenuse?", "expect": {"tool": "calculator", "result_approx": 13}}
+{"id": "calc-05", "category": "calculator", "prompt": "What is 2 to the power of 16?", "expect": {"tool": "calculator", "result_approx": 65536}}
+{"id": "calc-06", "category": "calculator", "prompt": "Add up 123, 456, and 789.", "expect": {"tool": "calculator", "result_approx": 1368}}
+{"id": "calc-07", "category": "calculator", "prompt": "What is 1000 divided by 8?", "expect": {"tool": "calculator", "result_approx": 125}}
+{"id": "calc-08", "category": "calculator", "prompt": "Calculate the area of a circle with radius 3, using pi.", "expect": {"tool": "calculator", "result_approx": 28.2743, "tolerance": 0.05}}
+{"id": "calc-09", "category": "calculator", "prompt": "What is 7 factorial?", "expect": {"tool": "calculator", "result_approx": 5040}}
+{"id": "calc-10", "category": "calculator", "prompt": "Evaluate (89 + 11) * 4.", "expect": {"tool": "calculator", "result_approx": 400}}
+{"id": "calc-11", "category": "calculator", "prompt": "What is 3.5 times 8 minus 4?", "expect": {"tool": "calculator", "result_approx": 24}}
+{"id": "calc-12", "category": "calculator", "prompt": "A car travels 60 km in 45 minutes. What is its average speed in km per hour?", "expect": {"tool": "calculator", "result_approx": 80}}
+{"id": "file-01", "category": "write_markdown", "prompt": "Write a markdown note called shopping-list with a list of 5 groceries.", "expect": {"tool": "write_markdown"}}
+{"id": "file-02", "category": "write_markdown", "prompt": "Save a document named meeting-notes summarizing a standup about deployment delays.", "expect": {"tool": "write_markdown"}}
+{"id": "file-03", "category": "write_markdown", "prompt": "Create a markdown file called weekly-report with title Weekly Report and a short status paragraph.", "expect": {"tool": "write_markdown"}}
+{"id": "file-04", "category": "write_markdown", "prompt": "Generate a note file called todo for tomorrow with three tasks.", "expect": {"tool": "write_markdown"}}
+{"id": "file-05", "category": "write_markdown", "prompt": "Please write a file named recipe containing a simple pasta recipe.", "expect": {"tool": "write_markdown"}}
+{"id": "file-06", "category": "write_markdown", "prompt": "Draft and save a markdown doc called onboarding-checklist for new engineers.", "expect": {"tool": "write_markdown"}}
+{"id": "file-07", "category": "write_markdown", "prompt": "Make a note file called book-summary about a book on startups.", "expect": {"tool": "write_markdown"}}
+{"id": "file-08", "category": "write_markdown", "prompt": "Write and save a markdown file called press-release announcing a product launch.", "expect": {"tool": "write_markdown"}}
+{"id": "mcp-01", "category": "mcp", "prompt": "What time is it right now?", "expect": {"tool": "get_local_time"}}
+{"id": "mcp-02", "category": "mcp", "prompt": "What is today's date according to this machine?", "expect": {"tool": "get_local_time"}}
+{"id": "mcp-03", "category": "mcp", "prompt": "How much free disk space do I have?", "expect": {"tool": "get_disk_usage"}}
+{"id": "mcp-04", "category": "mcp", "prompt": "Is my hard drive almost full?", "expect": {"tool": "get_disk_usage"}}
+{"id": "mcp-05", "category": "mcp", "prompt": "What operating system is this machine running?", "expect": {"tool": "get_system_info"}}
+{"id": "mcp-06", "category": "mcp", "prompt": "Which Python version is installed on this machine?", "expect": {"tool": "get_system_info"}}
+{"id": "mem-01", "category": "memory", "prompt": "Remember that my favorite programming language is Python.", "expect": {"tool": "remember"}}
+{"id": "mem-02", "category": "memory", "prompt": "Please remember that our next release is scheduled for March 15.", "expect": {"tool": "remember"}}
+{"id": "mem-03", "category": "memory", "prompt": "Remember this: my API budget is 500 dollars per month.", "expect": {"tool": "remember"}}
+{"id": "mem-04", "category": "memory", "prompt": "What did I tell you about my company earlier?", "expect": {"tool": "search_memory"}}
+{"id": "mem-05", "category": "memory", "prompt": "Do you remember what my favorite programming language is?", "expect": {"tool": "search_memory"}}
+{"id": "mem-06", "category": "memory", "prompt": "What was the release date I mentioned in our last conversation?", "expect": {"tool": "search_memory"}}
+{"id": "chat-01", "category": "chat", "prompt": "What is an LLM OS? Answer in one sentence.", "expect": {"tool": null}}
+{"id": "chat-02", "category": "chat", "prompt": "Explain how a calculator works, in one sentence.", "expect": {"tool": null}}
+{"id": "chat-03", "category": "chat", "prompt": "What's the difference between RAM and disk storage?", "expect": {"tool": null}}
+{"id": "chat-04", "category": "chat", "prompt": "Write a haiku about mountains.", "expect": {"tool": null}}
+{"id": "chat-05", "category": "chat", "prompt": "What does MCP stand for in the AI context?", "expect": {"tool": null}}
+{"id": "chat-06", "category": "chat", "prompt": "Translate 'good morning' to French.", "expect": {"tool": null}}
+{"id": "chat-07", "category": "chat", "prompt": "Is Python better than JavaScript for beginners? Answer briefly.", "expect": {"tool": null}}
+{"id": "chat-08", "category": "chat", "prompt": "Tell me a fun fact about the number 42.", "expect": {"tool": null}}

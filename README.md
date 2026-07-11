@@ -155,6 +155,36 @@ chain, and proves nothing left the machine — two ways:
 
 A markdown report is written to `scratchpad/airplane_report.md`.
 
+## Routing evals
+
+Small models route imperfectly; this repo measures it instead of hiding
+it. A 40-prompt golden set (including trap prompts that mention
+calculators, disks and files but need **no** tool) scores tool
+selection, execution success, and exact math results:
+
+```bash
+python scripts/run_evals.py --models llama3.2,qwen2.5-coder
+```
+
+Results on this machine (2026-07-10, temperature 0):
+
+| category | llama3.2 (3B) | qwen2.5-coder (7B) |
+|---|---|---|
+| calculator | 100% | 100% |
+| write_markdown | 100% | 100% |
+| MCP tools | 100% | 100% |
+| memory | 83% | 100% |
+| chat (no tool expected) | 0% | 75% |
+| **overall** | **78%** | **95%** |
+
+Two kernel features came directly out of these evals: math-notation
+normalization (`5^2`, `√`, `7!`, `math.` → valid expressions) and a
+**correction loop** that recovers tool calls emitted as raw JSON text
+by models whose chat templates lack structured tool support. The
+remaining llama3.2 weakness is over-eager tool calling on general
+questions — it still answers them after the wasted call (graceful
+degradation), but pick a ~7B model if routing precision matters.
+
 ## Tests
 
 ```bash
@@ -171,7 +201,7 @@ chain tamper detection — all with a mocked LLM, no engine needed.
 - [x] MCP host: third-party tools plug in as MCP servers
 - [x] Episodic memory: local vector DB with MemGPT-style paging
 - [x] Airplane-mode verification script (scripted proof of zero egress)
-- [ ] Routing accuracy eval harness across models/quantizations
+- [x] Routing accuracy eval harness across models/quantizations
 - [ ] Desktop installer (Tauri)
 
 ## License

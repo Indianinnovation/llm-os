@@ -14,8 +14,10 @@ class FakeClient:
         self.responses = list(responses)
         self.calls = []
 
-    def chat(self, model, messages, tools=None):
-        self.calls.append({"messages": list(messages), "tools": tools})
+    def chat(self, model, messages, tools=None, options=None):
+        self.calls.append(
+            {"messages": list(messages), "tools": tools, "options": options}
+        )
         return self.responses.pop(0)
 
 
@@ -91,6 +93,32 @@ def test_bad_params_surface_as_tool_error(audit):
     result = kernel.handle("math please")
     assert result["trace"][0]["status"] == "tool_error"
     assert "error" in result["trace"][0]["result"]
+
+
+def test_recovers_textual_tool_call(audit):
+    """Models whose templates emit tool calls as raw JSON text (e.g.
+    qwen2.5-coder) must still route correctly."""
+    kernel = make_kernel(
+        [
+            text_response('{"name": "calculator", "arguments": {"expression": "2+2"}}'),
+            text_response("The answer is 4."),
+        ],
+        audit,
+    )
+    result = kernel.handle("What is 2+2?")
+    assert result["trace"][0]["tool"] == "calculator"
+    assert result["trace"][0]["result"]["result"] == 4.0
+    assert result["reply"] == "The answer is 4."
+
+
+def test_json_reply_that_is_not_a_tool_call_stays_a_reply(audit):
+    kernel = make_kernel(
+        [text_response('{"name": "Alice", "age": 30}')],
+        audit,
+    )
+    result = kernel.handle("Give me a sample JSON user object")
+    assert result["trace"] == []
+    assert "Alice" in result["reply"]
 
 
 def test_audit_chain_records_and_verifies(audit):

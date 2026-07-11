@@ -8,6 +8,7 @@ final answer from the tool result.
 """
 
 import json
+import re
 import time
 from typing import Any, Optional
 
@@ -21,13 +22,18 @@ from .tools import default_registry
 
 SYSTEM_PROMPT = """You are the routing kernel of LLM OS, a private assistant that runs entirely on this machine.
 
-Rules:
-- For any calculation, ALWAYS call the calculator tool. Never do arithmetic yourself.
-- When the user asks to write, save, or generate a document/note/report as a file, ALWAYS call the write_markdown tool.
-- If another available tool matches the user's request (for example system or time information), call that tool instead of guessing.
-- When the user asks you to remember something, or tells you a lasting fact about themselves or their work, call the remember tool with that fact.
-- For general questions with no matching tool, answer directly and concisely.
-- Never claim to have created a file or computed a result unless a tool actually returned it.
+First decide: does this request require RUNNING a tool, or can you answer it directly?
+
+Call a tool ONLY when the request needs an action or live data:
+- calculator: the user wants a specific numeric calculation performed. Never do arithmetic yourself.
+- write_markdown: the user wants content saved as a file, note, or document.
+- remember: the user says "remember ..." or shares a lasting fact about themselves or their work.
+- search_memory: the user asks about something they told you in a previous conversation.
+- other tools: call them when the request clearly matches their description (e.g. current time, disk, system info).
+
+Answer directly WITHOUT any tool when the user asks for definitions, explanations, opinions, comparisons, translations, creative writing, or general knowledge — even if the topic mentions numbers, calculators, disks, files, or memory. Questions like "what is X", "explain X", "translate X", "write a poem" need NO tool.
+
+Never claim to have created a file, computed a result, or saved a memory unless a tool actually returned it.
 """
 
 
@@ -36,6 +42,31 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
+
+
+def _parse_textual_tool_call(content: str) -> Optional[dict]:
+    """Recover a tool call a model emitted as text instead of the
+    structured tool_calls field (some Ollama chat templates, e.g.
+    qwen2.5-coder, do this). Accepts bare JSON, ```json fences, and
+    <tool_call> wrappers shaped like {"name": ..., "arguments": ...}."""
+    text = (content or "").strip()
+    wrapped = re.search(r"<tool_call>\s*(.*?)\s*</tool_call>", text, re.DOTALL)
+    if wrapped:
+        text = wrapped.group(1)
+    elif text.startswith("```"):
+        text = text.strip("`").strip()
+        if text.startswith("json"):
+            text = text[4:].strip()
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("name"), str):
+        return None
+    arguments = data.get("arguments", data.get("parameters", {}))
+    if not isinstance(arguments, dict):
+        return None
+    return {"function": {"name": data["name"], "arguments": arguments}}
 
 
 class Kernel:
@@ -93,11 +124,23 @@ class Kernel:
         trace = []
 
         for _ in range(config.MAX_TOOL_CALLS):
+            # Routing must be reproducible: greedy decoding, no sampling.
             response = self.client.chat(
-                model=self.model, messages=messages, tools=self.registry.specs()
+                model=self.model,
+                messages=messages,
+                tools=self.registry.specs(),
+                options={"temperature": 0},
             )
             message = _get(response, "message", {})
             tool_calls = _get(message, "tool_calls") or []
+
+            if not tool_calls:
+                # Correction loop: only promote textual JSON to a tool call
+                # if it names a registered tool; anything else is a reply.
+                recovered = _parse_textual_tool_call(_get(message, "content"))
+                if recovered and self.registry.get(recovered["function"]["name"]):
+                    tool_calls = [recovered]
+                    message = {"content": "", "tool_calls": tool_calls}
 
             if not tool_calls:
                 reply = (_get(message, "content") or "").strip()

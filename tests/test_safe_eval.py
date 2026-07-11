@@ -52,6 +52,19 @@ def test_resource_bombs_rejected():
         safe_eval("1" + "+1" * 400)  # over length limit
 
 
+def test_llm_math_notation_normalized():
+    # LLMs routinely emit '^' for power and unicode math symbols.
+    assert safe_eval("5^2 + 12^2") == 169.0
+    assert safe_eval("sqrt(5^2 + 12^2)") == 13.0
+    assert safe_eval("√(9)") == 3.0
+    assert safe_eval("6 × 7") == 42.0
+    assert safe_eval("84 ÷ 2") == 42.0
+    assert safe_eval("7!") == 5040.0
+    assert safe_eval("math.sqrt(16)") == 4.0
+    with pytest.raises(UnsafeExpressionError):
+        safe_eval("9 ^ 9 ^ 9 ^ 9")  # pow guards still apply to '^'
+
+
 def test_math_errors_propagate_cleanly():
     with pytest.raises(ZeroDivisionError):
         safe_eval("1 / 0")
