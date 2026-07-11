@@ -13,6 +13,10 @@ memory_store/
 evals/results/
 .cache/
 
+# Internal strategy docs — never publish
+MasterPlan.md
+LAUNCH_POSTS.md
+
 # OS / editor
 .DS_Store
 .idea/
