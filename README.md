@@ -42,11 +42,21 @@ ollama pull all-minilm    # 46 MB embedding model for episodic memory
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Terminal 1 — the kernel
-uvicorn llm_os.api:app --port 8000
+python scripts/launch.py
+```
 
-# Terminal 2 — the web console
-streamlit run ui/app.py
+The launcher is a **preflight gate**: it verifies every recommended
+privacy setting — no vendor update channel (desktop app not running),
+engine bound to loopback with zero external connections, UI and
+vector-store telemetry disabled, valid MCP config, models present,
+disk headroom — and refuses to start until critical checks pass,
+printing the exact fix for each failure. `--check-only` audits without
+starting; `--docker` gates and launches the container sandbox;
+`--stop` shuts everything down. To start components by hand instead:
+
+```bash
+uvicorn llm_os.api:app --port 8000    # kernel
+streamlit run ui/app.py               # web console
 ```
 
 Open http://localhost:8501 and try:
@@ -253,14 +263,19 @@ python scripts/run_evals.py --models llama3.2,qwen2.5-coder
 
 Results on this machine (2026-07-10, temperature 0):
 
-| category | llama3.2 (3B) | qwen2.5-coder (7B) |
-|---|---|---|
-| calculator | 100% | 100% |
-| write_markdown | 100% | 100% |
-| MCP tools | 100% | 100% |
-| memory | 83% | 100% |
-| chat (no tool expected) | 0% | 75% |
-| **overall** | **78%** | **95%** |
+| category | minicpm5 (1B, 0.7GB) | llama3.2 (3B, 2GB) | qwen2.5-coder (7B, 4.7GB) |
+|---|---|---|---|
+| calculator | 92% | 100% | 100% |
+| write_markdown | 62% | 100% | 100% |
+| MCP tools | 100% | 100% | 100% |
+| memory | 17% | 83% | 100% |
+| chat (no tool expected) | 50% | 0% | 75% |
+| **overall** | **68%** | **78%** | **95%** |
+
+Routing quality scales with parameters, but not uniformly: the 1B
+model beats the 3B at knowing when *not* to call a tool, while being
+far weaker at memory tools. Pick per deployment: 1B for constrained
+hardware, 7B when routing precision matters.
 
 Two kernel features came directly out of these evals: math-notation
 normalization (`5^2`, `√`, `7!`, `math.` → valid expressions) and a
