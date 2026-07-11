@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 DATASET = Path(__file__).resolve().parent.parent / "evals" / "golden_prompts.jsonl"
-VALID_CATEGORIES = {"calculator", "write_markdown", "mcp", "memory", "chat"}
+VALID_CATEGORIES = {"calculator", "write_markdown", "mcp", "memory", "chat", "telecom"}
 VALID_TOOLS = {
     "calculator",
     "write_markdown",
@@ -13,6 +13,11 @@ VALID_TOOLS = {
     "get_system_info",
     "remember",
     "search_memory",
+    "network_health_check",
+    "diagnose_cell",
+    "get_cell_kpis",
+    "get_active_alarms",
+    "get_recent_logs",
     None,
 }
 

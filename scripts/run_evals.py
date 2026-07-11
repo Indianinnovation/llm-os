@@ -43,7 +43,7 @@ GREEN, RED, YELLOW, BOLD, DIM, RESET = (
     "\033[32m", "\033[31m", "\033[33m", "\033[1m", "\033[2m", "\033[0m",
 )
 
-CATEGORIES = ["calculator", "write_markdown", "mcp", "memory", "chat"]
+CATEGORIES = ["calculator", "write_markdown", "mcp", "memory", "chat", "telecom"]
 
 
 class StubMemory:

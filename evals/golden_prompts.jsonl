@@ -38,3 +38,13 @@
 {"id": "chat-06", "category": "chat", "prompt": "Translate 'good morning' to French.", "expect": {"tool": null}}
 {"id": "chat-07", "category": "chat", "prompt": "Is Python better than JavaScript for beginners? Answer briefly.", "expect": {"tool": null}}
 {"id": "chat-08", "category": "chat", "prompt": "Tell me a fun fact about the number 42.", "expect": {"tool": null}}
+{"id": "tel-01", "category": "telecom", "prompt": "Run a health check on the network.", "expect": {"tool": "network_health_check"}}
+{"id": "tel-02", "category": "telecom", "prompt": "Which cells currently have problems?", "expect": {"tool": "network_health_check"}}
+{"id": "tel-03", "category": "telecom", "prompt": "Why is cell 3 degraded?", "expect": {"tool": "diagnose_cell"}}
+{"id": "tel-04", "category": "telecom", "prompt": "What is the PRB utilization on cell 1?", "expect": {"tool": "get_cell_kpis"}}
+{"id": "tel-05", "category": "telecom", "prompt": "Show me the KPIs for CELL_005.", "expect": {"tool": "get_cell_kpis"}}
+{"id": "tel-06", "category": "telecom", "prompt": "Are there any active alarms on cell 7?", "expect": {"tool": "get_active_alarms"}}
+{"id": "tel-07", "category": "telecom", "prompt": "Show recent log entries for cell 2.", "expect": {"tool": "get_recent_logs"}}
+{"id": "tel-08", "category": "telecom", "prompt": "What does PRB utilization mean in 5G?", "expect": {"tool": null}}
+{"id": "tel-09", "category": "telecom", "prompt": "Explain the difference between BLER and SINR in one sentence.", "expect": {"tool": null}}
+{"id": "tel-10", "category": "telecom", "prompt": "Give me the root cause of the degradation on cell 5 and how to fix it.", "expect": {"tool": "diagnose_cell"}}
