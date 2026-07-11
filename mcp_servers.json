@@ -3,6 +3,10 @@
     "system-info": {
       "command": "python",
       "args": ["examples/system_info_server.py"]
+    },
+    "disk-inspector": {
+      "command": "python",
+      "args": ["examples/disk_inspector_server.py"]
     }
   }
 }

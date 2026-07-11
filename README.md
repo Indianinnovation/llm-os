@@ -107,9 +107,15 @@ The kernel is an **MCP host**. Drop server definitions into
 On startup the kernel spawns each server over stdio, discovers its
 tools, and routes to them exactly like built-ins — every call still
 lands in the hash-chained audit log. `GET /tools` labels each tool's
-origin (`builtin` vs `mcp:<server>`). The bundled example server
-(`examples/system_info_server.py`) is fully offline: local time, disk
-usage, system info.
+origin (`builtin` vs `mcp:<server>`). Two fully offline example
+servers are bundled:
+
+- **system-info** — local time, whole-disk usage, OS details
+- **disk-inspector** — read-only filesystem analytics jailed to your
+  home directory: folder sizes ("how big is my Downloads folder?"),
+  space breakdowns, and content-hash duplicate detection — with hard
+  caps on entries walked and bytes hashed, and forgiving path
+  resolution ("download folder" → `~/Downloads`)
 
 It works in reverse too: `python -m llm_os.mcp_server` exposes the LLM
 OS built-in tools (sandboxed calculator, jailed markdown writer) to any
