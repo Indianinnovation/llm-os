@@ -48,9 +48,17 @@ if ping -c 1 -t 2 1.1.1.1 >/dev/null 2>&1; then
   fi
 fi
 if ping -c 1 -t 2 1.1.1.1 >/dev/null 2>&1; then
-  echo "  ${Y}◦ still ONLINE (wired link?) — continuing; egress will be monitored instead${R}"
+  # A tethered iPhone or wired link can keep the machine online.
+  echo "  ${Y}› disabling backup network services (iPhone USB, Thunderbolt Bridge)${R}"
+  networksetup -setnetworkserviceenabled "iPhone USB" off 2>/dev/null
+  networksetup -setnetworkserviceenabled "Thunderbolt Bridge" off 2>/dev/null
+  sleep 3
+fi
+if ping -c 1 -t 2 1.1.1.1 >/dev/null 2>&1; then
+  echo "  ${Y}◦ still ONLINE — unplug tethered phones/ethernet for true airplane mode;${R}"
+  echo "  ${Y}  continuing with egress monitoring instead${R}"
 else
-  echo "  ${G}✈  Wi-Fi radio is OFF — no route to the internet — TRUE AIRPLANE MODE${R}"
+  echo "  ${G}✈  no route to the internet — TRUE AIRPLANE MODE${R}"
 fi
 sleep 2
 
@@ -72,4 +80,6 @@ banner "⑥ Full verification: every path + zero egress + audit chain"
 sleep 1
 $PY scripts/verify_airplane_mode.py
 
-echo "${D}(recording done? restore network: networksetup -setairportpower ${WIFI_DEV:-en0} on)${R}"
+echo "${D}(recording done? restore network: networksetup -setairportpower ${WIFI_DEV:-en0} on"
+echo " && networksetup -setnetworkserviceenabled \"iPhone USB\" on"
+echo " && networksetup -setnetworkserviceenabled \"Thunderbolt Bridge\" on)${R}"
