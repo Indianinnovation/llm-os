@@ -15,6 +15,7 @@ in synchronously via run_coroutine_threadsafe.
 import asyncio
 import json
 import logging
+import os
 import sys
 import threading
 from functools import partial
@@ -26,7 +27,9 @@ from .registry import Tool, ToolError, ToolRegistry
 logger = logging.getLogger("llm_os.mcp")
 
 CONNECT_TIMEOUT_S = 30
-CALL_TIMEOUT_S = 60
+# Long enough for MCP tools that run local-model pipelines internally
+# (e.g. a full telecom RCA is ~3 sequential 7B calls).
+CALL_TIMEOUT_S = int(os.environ.get("MCP_CALL_TIMEOUT_S", "180"))
 
 try:
     from mcp import ClientSession, StdioServerParameters

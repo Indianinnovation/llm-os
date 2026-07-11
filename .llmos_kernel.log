@@ -1,11 +1,30 @@
-INFO:     Started server process [77559]
+INFO:     Started server process [48740]
 INFO:     Waiting for application startup.
-[07/11/26 09:00:24] INFO     Processing request of type            server.py:733
+[07/11/26 11:02:44] INFO     Processing request of type            server.py:733
                              ListToolsRequest                                   
-[07/11/26 09:00:25] INFO     Processing request of type            server.py:733
+[07/11/26 11:02:44] INFO     Processing request of type            server.py:733
                              ListToolsRequest                                   
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     127.0.0.1:59354 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59363 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59367 - "GET /audit?n=15 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62443 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62560 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62591 - "POST /chat HTTP/1.1" 200 OK
+[07/11/26 11:20:04] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+INFO:     127.0.0.1:62610 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62629 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62652 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62677 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62681 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62700 - "POST /chat HTTP/1.1" 200 OK
+[07/11/26 11:20:25] INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+INFO:     127.0.0.1:62719 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62738 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62761 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62784 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62799 - "GET /audit?n=1 HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [48740]
