@@ -8,7 +8,7 @@
 
 LLM OS is an implementation of [Andrej Karpathy's LLM OS idea](https://x.com/karpathy/status/1723140519554105733) built for one uncompromising constraint: **zero egress**. A small local language model acts as the CPU — it only *routes intent*. Deterministic, sandboxed tools do the actual work, and every decision is written to a tamper-evident audit log.
 
-> **Built on LLM OS:** [TelecomOS](https://github.com/Indianinnovation/telecom-ai-agent) — zero-egress root-cause analysis for 5G networks (air-gapped NOC demo inside).
+> **Built on LLM OS:** [TelecomOS](https://github.com/Indianinnovation/telecomos) — zero-egress root-cause analysis for 5G networks (air-gapped NOC demo inside).
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐

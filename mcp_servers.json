@@ -9,8 +9,8 @@
       "args": ["examples/disk_inspector_server.py"]
     },
     "telecom-diagnostics": {
-      "command": "/Users/diliprtandekar/Documents/Claude Skill/telecom-ai-agent/.venv/bin/python",
-      "args": ["/Users/diliprtandekar/Documents/Claude Skill/telecom-ai-agent/mcp_server.py"]
+      "command": "/Users/diliprtandekar/Documents/Claude Skill/telecomos/.venv/bin/python",
+      "args": ["/Users/diliprtandekar/Documents/Claude Skill/telecomos/mcp_server.py"]
     }
   }
 }
