@@ -2,27 +2,34 @@
 
 **Everything runs on your machine. Nothing leaves it.**
 
-![90-second demo: Wi-Fi switched off on camera, every routing path exercised, zero egress verified live](docs/demo.gif)
+![Demo: the script kills the Wi-Fi radio on camera, every routing path works offline, verification passes](docs/demo.gif)
 
-*One unedited take: Wi-Fi toggled off on camera → **TRUE AIRPLANE MODE** → math routing, sandboxed file generation, MCP disk tools, cross-session memory — then the verification suite passes with zero non-loopback connections. Full-resolution video: [docs/demo.mp4](docs/demo.mp4). Reproduce it yourself: `./scripts/demo.sh`.*
+*One unedited take: the demo script disables the Wi-Fi radio on camera → **TRUE AIRPLANE MODE** → math routing, sandboxed file generation, MCP disk tools, cross-session memory — then the verification suite closes with `Mode: OFFLINE — egress impossible by construction`. Full-resolution video: [docs/demo.mp4](docs/demo.mp4). Reproduce it yourself: `./scripts/demo.sh`.*
 
 LLM OS is an implementation of [Andrej Karpathy's LLM OS idea](https://x.com/karpathy/status/1723140519554105733) built for one uncompromising constraint: **zero egress**. A small local language model acts as the CPU — it only *routes intent*. Deterministic, sandboxed tools do the actual work, and every decision is written to a tamper-evident audit log.
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  UI / any client                                             │
-│      │  HTTP (localhost only)                                │
-│      ▼                                                       │
-│  KERNEL (FastAPI)                                            │
-│   • routes intent via native tool-calling                    │
-│   • validates all tool params (Pydantic)                     │
-│   • hash-chained audit log of every action                   │
-│      │                          │                            │
-│      ▼                          ▼                            │
-│  LLM ENGINE (Ollama)        TOOLS (deterministic, sandboxed) │
-│   internal-only network      • calculator (AST whitelist)    │
-│   no route to internet       • markdown writer (jailed dir)  │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│  UI / any client            HTTP (localhost only)                  │
+│      │                                                             │
+│      ▼                                                             │
+│  KERNEL (FastAPI)                          ┌────────────────────┐  │
+│   • routes intent via native tool-calling  │ PREFLIGHT GATE     │  │
+│   • validates all tool params (Pydantic)   │ telemetry off ·    │  │
+│   • hash-chained audit log of every action │ loopback-only ·    │  │
+│   • model digest pinning (refuses drift)   │ model pinned · …   │  │
+│   • egress sentinel (watchdog, 3s)         └────────────────────┘  │
+│      │                │                       │                    │
+│      ▼                ▼                       ▼                    │
+│  LLM ENGINE       BUILT-IN TOOLS          MCP SERVERS (stdio)      │
+│  (Ollama, frozen   • calculator            • system-info           │
+│   GGUF weights,      (AST whitelist)       • disk-inspector        │
+│   loopback only)   • markdown writer       • any Claude-Desktop-   │
+│                      (jailed dir)            format server         │
+│      │             • remember /                                    │
+│      ▼               search_memory                                 │
+│  EPISODIC MEMORY (local ChromaDB, MemGPT-style paging)             │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Why
@@ -52,8 +59,8 @@ python scripts/launch.py
 The launcher is a **preflight gate**: it verifies every recommended
 privacy setting — no vendor update channel (desktop app not running),
 engine bound to loopback with zero external connections, UI and
-vector-store telemetry disabled, valid MCP config, models present,
-disk headroom — and refuses to start until critical checks pass,
+vector-store telemetry disabled, **model digests pinned**, valid MCP
+config, models present, disk headroom — and refuses to start until critical checks pass,
 printing the exact fix for each failure. `--check-only` audits without
 starting; `--docker` gates and launches the container sandbox;
 `--stop` shuts everything down. To start components by hand instead:
@@ -67,6 +74,8 @@ Open http://localhost:8501 and try:
 
 - *"What is 4539 multiplied by 23?"* → routed to the `calculator` tool
 - *"Write a markdown note called project-ideas listing 3 startup ideas"* → routed to `write_markdown`, file appears in `scratchpad/`
+- *"How big is my Downloads folder?"* → routed to the `disk-inspector` MCP server
+- *"Remember that my favorite city is Mumbai"* → stored; recalled in any later session
 - *"What is an LLM OS?"* → answered directly, no tool
 
 ## Quickstart (Docker sandbox)
@@ -169,11 +178,17 @@ chain, and proves nothing left the machine — two ways:
 - **Machine online:** samples every TCP connection opened by the
   engine, kernel and UI processes for the entire run and fails on any
   non-loopback destination.
-- **Machine offline (turn Wi-Fi off):** true airplane mode — full
-  functionality with no internet route at all. This is the demo to
-  screen-record.
+- **Machine offline:** true airplane mode — full functionality with no
+  internet route at all. This is the demo to screen-record, and
+  `./scripts/demo.sh` choreographs the whole thing: it disables the
+  Wi-Fi radio itself (menu-bar toggles get undone by auto-join) and
+  walks every feature on camera.
 
-A markdown report is written to `scratchpad/airplane_report.md`.
+The offline detection requires **actual response bytes**, not just a
+TCP handshake — local VPN agents (e.g. Cisco AnyConnect) accept
+connections even with the radio off and will fool naive probes; ours
+learned that the hard way. A markdown report is written to
+`scratchpad/airplane_report.md`.
 
 ## Your data: verifiable guarantees
 
@@ -317,9 +332,11 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-The suite includes sandbox-escape attempts against the expression
-evaluator, path-traversal attempts against the file tool, and audit
-chain tamper detection — all with a mocked LLM, no engine needed.
+72 tests: sandbox-escape attempts against the expression evaluator,
+path-traversal attacks on the file tool, audit-chain tamper detection,
+model digest-pinning enforcement, egress-sentinel behavior, and
+telemetry-off regression guards — all with a mocked LLM, no engine
+needed.
 
 ## Roadmap
 
@@ -327,6 +344,8 @@ chain tamper detection — all with a mocked LLM, no engine needed.
 - [x] Episodic memory: local vector DB with MemGPT-style paging
 - [x] Airplane-mode verification script (scripted proof of zero egress)
 - [x] Routing accuracy eval harness across models/quantizations
+- [x] Untrusted-model containment: digest pinning + egress sentinel
+- [ ] Swappable engine adapter (llama.cpp `llama-server`, vLLM) via OpenAI-compatible API
 - [ ] Desktop installer (Tauri)
 
 ## License
