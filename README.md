@@ -36,6 +36,10 @@ LLM OS is an implementation of [Andrej Karpathy's LLM OS idea](https://x.com/kar
 
 ## The System console — see every guarantee, live
 
+![System console: streaming chat with live tool chips and audit ids, the trust panel with all checks passing, the audit chain, memory, and tools](docs/console_demo.gif)
+
+*Chat streams token by token with each tool call shown live (and its audit id); the Trust panel says **All guarantees hold**; every answer is in the hash-chained audit log. Full video: [docs/console_demo.mp4](docs/console_demo.mp4).*
+
 Most local-AI tools ask you to *trust* them. LLM OS ships the control
 plane that lets you **check**: open **http://localhost:8000/console**
 (served by the kernel itself — no extra process, no dependencies, works
