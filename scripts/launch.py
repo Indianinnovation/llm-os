@@ -124,6 +124,8 @@ def main() -> int:
     parser.add_argument("--stop", action="store_true", help="stop native kernel + UI")
     parser.add_argument("--approve-models", action="store_true",
                         help="pin the digests of all models currently in the engine")
+    parser.add_argument("--approve-mcp", action="store_true",
+                        help="pin the file hashes of every configured MCP server")
     args = parser.parse_args()
 
     if args.stop:
@@ -135,6 +137,15 @@ def main() -> int:
         print(f"{GREEN}Pinned {len(approved)} model(s) in model_manifest.json:{RESET}")
         for name, digest in approved.items():
             print(f"  {name:<36} {DIM}{digest[:24]}…{RESET}")
+        return 0
+
+    if args.approve_mcp:
+        from llm_os import config as llm_config, mcptrust
+        approved = mcptrust.approve_config(llm_config.MCP_CONFIG)
+        print(f"{GREEN}Pinned {len(approved)} MCP server(s) in mcp_manifest.json:{RESET}")
+        for name, entry in approved.items():
+            for path, digest in entry["files"].items():
+                print(f"  {name:<20} {Path(path).name:<28} {DIM}{digest[:24]}…{RESET}")
         return 0
 
     report = run_preflight("docker" if args.docker else "native")

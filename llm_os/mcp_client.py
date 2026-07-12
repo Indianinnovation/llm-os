@@ -22,6 +22,7 @@ from functools import partial
 from pathlib import Path
 from typing import List, Optional
 
+from . import mcptrust
 from .registry import Tool, ToolError, ToolRegistry
 
 logger = logging.getLogger("llm_os.mcp")
@@ -44,6 +45,9 @@ class MCPManager:
     def __init__(self, config_path: Path):
         self.config_path = Path(config_path)
         self.discovered: List[dict] = []
+        # {server: {"status", "detail"}} — supply-chain verification
+        # outcome for every configured server, spawned or refused.
+        self.trust_report: dict = {}
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._sessions = {}
@@ -77,6 +81,13 @@ class MCPManager:
         self._shutdown_event = asyncio.Event()
 
         for name, spec in servers.items():
+            # Supply-chain gate: a server whose files drifted from their
+            # pinned hashes is refused — never spawned, not just ignored.
+            status, detail = mcptrust.verify_server(name, spec)
+            self.trust_report[name] = {"status": status, "detail": detail}
+            if status == mcptrust.FAIL:
+                logger.error("MCP server '%s' REFUSED: %s", name, detail)
+                continue
             future = asyncio.run_coroutine_threadsafe(
                 self._connect_server(name, spec), self._loop
             )

@@ -133,6 +133,10 @@ def _startup() -> None:
     _mcp = MCPManager(config.MCP_CONFIG)
     _mcp.start()
     _mcp.register_tools(registry)
+    # Supply-chain verdicts land in the same chain as everything else:
+    # a refused (drifted) server is evidence, not just a log line.
+    for server_name, verdict in _mcp.trust_report.items():
+        audit.append("mcp_verification", {"server": server_name, **verdict})
 
     # Human approval gates: a tool listed here cannot run until a person
     # approves it, no matter what the model decides.

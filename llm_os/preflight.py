@@ -242,6 +242,42 @@ def check_mcp_config(report: PreflightReport) -> None:
         report.add("MCP config", PASS, f"{len(servers)} server(s): {list(servers)}")
 
 
+def check_mcp_pinning(report: PreflightReport) -> None:
+    """Every configured MCP server must match its pinned file hashes —
+    the same posture as model digest pinning, applied to the executables
+    the kernel spawns."""
+    from . import mcptrust
+
+    path = config.MCP_CONFIG
+    if not path.exists():
+        report.add("MCP pinning", PASS, "no MCP config — nothing to pin")
+        return
+    try:
+        servers = json.loads(path.read_text()).get("mcpServers", {})
+    except (json.JSONDecodeError, OSError):
+        return  # unreadable config is already a FAIL in 'MCP config'
+    if not servers:
+        report.add("MCP pinning", PASS, "no servers configured")
+        return
+    verdicts = {name: mcptrust.verify_server(name, spec) for name, spec in servers.items()}
+    failed = [detail for status, detail in verdicts.values() if status == mcptrust.FAIL]
+    unpinned = [name for name, (status, _) in verdicts.items() if status == mcptrust.WARN]
+    if failed:
+        report.add(
+            "MCP pinning", FAIL,
+            "; ".join(failed),
+            "Inspect the server, then re-approve: python scripts/launch.py --approve-mcp",
+        )
+    elif unpinned:
+        report.add(
+            "MCP pinning", WARN,
+            f"{len(unpinned)} server(s) unpinned: {unpinned}",
+            "Pin them: python scripts/launch.py --approve-mcp",
+        )
+    else:
+        report.add("MCP pinning", PASS, f"{len(verdicts)} server(s) match pinned hashes")
+
+
 def check_disk_space(report: PreflightReport, min_free_gb: float = 5.0) -> None:
     usage = shutil.disk_usage("/")
     free_gb = usage.free / 2**30
@@ -290,5 +326,6 @@ def run_preflight(mode: str = "native") -> PreflightReport:
     check_streamlit_telemetry(report, Path(config.BASE_DIR) / ".streamlit" / "config.toml")
     check_memory_telemetry(report)
     check_mcp_config(report)
+    check_mcp_pinning(report)
     check_disk_space(report)
     return report

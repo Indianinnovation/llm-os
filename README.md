@@ -17,11 +17,12 @@ LLM OS is an implementation of [Andrej Karpathy's LLM OS idea](https://x.com/kar
 │      ▼                                                              │
 │  KERNEL (FastAPI)                          ┌─────────────────────┐  │
 │   • routes intent via native tool-calling  │ PREFLIGHT GATE      │  │
-│   • validates all tool params (Pydantic)   │ 12 checks, blocks   │  │
+│   • validates all tool params (Pydantic)   │ 13 checks, blocks   │  │
 │   • hash-chained audit log of every action │ startup on failure: │  │
-│   • model digest pinning (refuses drift)   │ telemetry off ·     │  │
-│   • egress sentinel (watchdog, 3s)         │ loopback-only ·     │  │
-│      │                                     │ model pinned · …    │  │
+│   • model + MCP-server pinning (no drift)  │ telemetry off ·     │  │
+│   • rejects non-loopback Host/Origin       │ loopback-only ·     │  │
+│   • egress sentinel (watchdog, 3s)         │ model + servers     │  │
+│      │                                     │ pinned · …          │  │
 │      ▼                                     └─────────────────────┘  │
 │  ┌───────────────┐   a gated tool never runs until a human clicks   │
 │  │ APPROVAL GATE │   Approve — the model can propose, not execute   │
@@ -63,7 +64,7 @@ in the Docker sandbox).
 | 💬 **Chat** | Ask anything — answers **stream token by token**, each tool call appears live as a chip with its audit id, follow-ups work, and **chats are saved** (they survive a refresh, a restart, a reboot) |
 | ⏰ **Schedules** | Agents that run on their own — "every morning, check disk usage and report" — with runs, next-run times, and any approvals they are waiting on |
 | 📄 **Documents** | Drop your files in `documents/` and ask about them — answers come back **with citations** (`sample-nda.md (chunk 1/1)`), indexed and read entirely on this machine |
-| 🔒 **Trust** | Are all 12 privacy checks passing *right now*? Has the egress sentinel seen anything leave? Is the model digest still pinned? |
+| 🔒 **Trust** | Are all 13 privacy checks passing *right now*? Has the egress sentinel seen anything leave? Is the model digest still pinned? |
 | 🧾 **Audit** | Every routing decision and tool execution, hash-chain verified — searchable, and exportable as signed-in-order JSONL for an auditor |
 | 🧠 **Memory** | Everything the system remembers about you — searchable, and **erasable** (one record, or all of it) |
 | 🔧 **Tools** | Every tool the model may call, its source (`builtin` vs `mcp:<server>`), call counts, failures, and latency |
@@ -279,6 +280,26 @@ point of the MCP layer.
 It works in reverse too: `python -m llm_os.mcp_server` exposes the LLM
 OS built-in tools (sandboxed calculator, jailed markdown writer) to any
 other MCP host, such as Claude Desktop.
+
+### MCP servers are pinned, like models
+
+An MCP server is an arbitrary executable the kernel spawns and hands a
+channel to your tools — the same trust problem as model weights, so it
+gets the same answer. Approving a server hashes its interpreter and its
+script into `mcp_manifest.json`; on every start each server is
+re-hashed, and one whose files drifted is **refused, not merely
+unregistered** — it is never spawned at all. Preflight blocks startup
+on drift, and the verdict for each server lands in the audit chain as
+an `mcp_verification` event.
+
+```bash
+python scripts/launch.py --approve-mcp      # the ceremony: pin what you trust
+# ✗ MCP pinning   PIN MISMATCH for 'disk-inspector': disk_inspector_server.py
+#                 changed since approval (pinned 3c43c19b…, on disk a716f8cc…)
+```
+
+Everything the kernel executes — weights, servers, tools — is either
+pinned or sandboxed. Nothing is trusted because it was there yesterday.
 
 ## Episodic memory (MemGPT-style paging)
 
@@ -505,13 +526,14 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-109 tests: sandbox-escape attempts against the expression evaluator,
+125 tests: sandbox-escape attempts against the expression evaluator,
 path-traversal attacks on the file tool, audit-chain tamper detection,
 model digest-pinning enforcement, egress-sentinel behavior, approval-gate
 enforcement (a gated tool cannot execute without a human decision, and a
 scheduled run cannot approve itself), document-index and scheduler
-behavior, and telemetry-off regression guards — all with a mocked LLM, no
-engine needed.
+behavior, MCP supply-chain pinning (a drifted server is never spawned),
+the loopback origin guard (a rebound page cannot click Approve), and
+telemetry-off regression guards — all with a mocked LLM, no engine needed.
 
 Two of those tests exist because of real bugs this project shipped and then
 caught: **two processes racing the same audit log** (a fast restart forked

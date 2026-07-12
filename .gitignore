@@ -26,3 +26,6 @@ document_index/
 conversations/
 approvals.json
 schedules.json
+mcp_manifest.json
+.llmos_kernel.log
+.llmos_ui.log

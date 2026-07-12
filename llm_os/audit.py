@@ -7,7 +7,6 @@ of every record after it. This is the seed of the compliance story —
 an auditor can verify the chain offline with ~20 lines of code.
 """
 
-import fcntl
 import hashlib
 import json
 import os
@@ -15,6 +14,8 @@ import threading
 import time
 import uuid
 from pathlib import Path
+
+from . import portalock
 
 GENESIS_HASH = "0" * 64
 _TAIL_BYTES = 8192  # enough to hold the last record
@@ -62,7 +63,7 @@ class AuditLog:
         """
         with self._lock:
             with self.path.open("r+") as f:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                portalock.lock(f)
                 try:
                     record = {
                         "id": uuid.uuid4().hex[:12],
@@ -79,7 +80,7 @@ class AuditLog:
                     f.flush()
                     os.fsync(f.fileno())
                 finally:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                    portalock.unlock(f)
             return record["id"]
 
     def tail(self, n: int = 20) -> list:
