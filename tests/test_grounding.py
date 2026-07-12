@@ -161,3 +161,78 @@ def test_relevance_floor_is_configurable(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "MIN_RELEVANCE", 0.4)  # accept the weak chunk
     _, strong = filter_weak_matches({"matches": [WEAK]}, [WEAK])
     assert len(strong) == 1
+
+
+# ── the other half: a mis-routed general question still gets an answer ──────
+
+from llm_os.kernel import is_corpus_scoped, needs_unaided_answer  # noqa: E402
+
+
+@pytest.mark.parametrize("prompt", [
+    "could you summerize TS 38.331",
+    "what does my NDA say about liability?",
+    "what is in the contract",
+    "summarize sample-nda.md",
+    "what does section 4 say",
+    "is that in our specs?",
+])
+def test_corpus_scoped_questions_are_recognised(prompt):
+    assert is_corpus_scoped(prompt)
+
+
+@pytest.mark.parametrize("prompt", [
+    "what is 5g ?",
+    "What is an LLM OS?",
+    "What is gen ai ?",
+    "explain quantum computing",
+    "who invented the transistor",
+])
+def test_general_questions_are_not_corpus_scoped(prompt):
+    assert not is_corpus_scoped(prompt)
+
+
+def test_general_question_misrouted_to_search_still_gets_answered(tmp_path):
+    """llama3.2 calls search_specs on 'what is 5G?' (0% no-tool discrimination
+    in our evals). It finds nothing. Refusing would be a broken assistant —
+    the tool was the mistake, not the question."""
+    kernel = _kernel(
+        tmp_path,
+        _search_tool({"query": "5g", "matches": [WEAK]}),
+        [
+            tool_call_response("search_specs", {"query": "what is 5g"}),
+            text_response(""),                       # model has nothing to say post-tool
+            text_response("5G is the fifth generation of mobile network technology."),
+        ],
+    )
+    outcome = kernel.handle("what is 5g ?")
+    assert "fifth generation" in outcome["reply"]
+    # …but it is unmistakably labelled as ungrounded.
+    assert "not from your documents" in outcome["reply"]
+    assert "no citation" in outcome["reply"]
+    assert "**Sources**" not in outcome["reply"]
+
+
+def test_corpus_scoped_question_still_refuses(tmp_path):
+    """The dangerous case must NOT get the general-knowledge fallback."""
+    kernel = _kernel(
+        tmp_path,
+        _search_tool({"query": "TS 38.331", "matches": [WEAK, OTHER_SPEC]}),
+        [
+            tool_call_response("search_specs", {"query": "TS 38.331"}),
+            text_response("TS 38.331 covers RRC, including power control."),
+        ],
+    )
+    outcome = kernel.handle("could you summerize TS 38.331")
+    assert "could not find that in your indexed material" in outcome["reply"]
+    assert "power control" not in outcome["reply"]
+    assert "not from your documents" not in outcome["reply"]  # no fallback
+
+
+def test_needs_unaided_answer_only_when_search_ran_and_failed():
+    assert needs_unaided_answer([{"retrieval": True, "citations": []}], "what is 5g")
+    # A search that DID find something needs no fallback.
+    assert not needs_unaided_answer([{"retrieval": True, "citations": ["a"]}], "what is 5g")
+    # A corpus-scoped question refuses instead.
+    assert not needs_unaided_answer([{"retrieval": True, "citations": []}], "summarize TS 38.331")
+    # No search at all — nothing to recover from.
+    assert not needs_unaided_answer([{"retrieval": False}], "what is 5g")

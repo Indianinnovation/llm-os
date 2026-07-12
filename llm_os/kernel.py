@@ -104,20 +104,47 @@ def filter_weak_matches(result: dict, matches: list) -> tuple:
     return filtered, strong
 
 
-def ungrounded_reply(trace: list) -> Optional[str]:
-    """The reply when retrieval found nothing solid.
+# Does the question ask about the USER'S OWN material, or about the world?
+# "Summarize TS 38.331" / "what does my NDA say" is a claim about their
+# corpus: if retrieval comes up empty, answering from memory is a lie with
+# a citation's clothes on, and the kernel refuses. "What is 5G?" is a
+# question about the world: the corpus was never the point, and refusing is
+# just a broken assistant. The two failures look identical to the model —
+# it called the same tool — so the kernel tells them apart, not the model.
+_CORPUS_SCOPED_RE = re.compile(
+    r"""
+      \b(?:my|our|the)\s+
+        (?:nda|contract|agreement|document|documents|file|files|spec|specs|
+           specification|policy|policies|report|note|notes|paper|manual)\b
+    | \bTS\s?\d{2}[.\s]?\d{3}\b          # 3GPP-style identifier: TS 38.331
+    | \b\w[\w-]*\.(?:md|pdf|txt|docx?)\b # a filename
+    | \bin\s+(?:my|our|the)\s+(?:corpus|documents|files|specs)\b
+    | \b(?:section|clause|annex|chapter)\s+\d
+    """,
+    re.I | re.X,
+)
 
-    The model must not be the one to decide whether it knows. Left alone
-    it says 'I was unable to find a direct summary… however, I can provide
-    a general overview' and then invents one — which, in a spec or a
-    contract, is the single most dangerous thing this system could do.
+
+def is_corpus_scoped(prompt: str) -> bool:
+    return bool(_CORPUS_SCOPED_RE.search(prompt or ""))
+
+
+def ungrounded_reply(trace: list, prompt: str = "") -> Optional[str]:
+    """The reply when retrieval found nothing — but ONLY when the question
+    was about the user's own material.
+
+    The model must not be the one to decide whether it knows. Left alone it
+    says 'I was unable to find a direct summary… however, I can provide a
+    general overview' and then invents one, which in a spec or a contract is
+    the most dangerous thing this system can do. But that danger comes from
+    *false attribution*, not from general knowledge as such — so this refusal
+    applies only when the user was asking about their corpus.
     """
-    empty = [
-        t for t in (trace or [])
-        if t.get("retrieval") and not t.get("citations")
-    ]
+    empty = [t for t in (trace or []) if t.get("retrieval") and not t.get("citations")]
     if not empty or any(t.get("citations") for t in (trace or [])):
         return None
+    if not is_corpus_scoped(prompt):
+        return None  # a question about the world — answer it (see _answer_unaided)
     tools = ", ".join(sorted({f"`{t['tool']}`" for t in empty}))
     return (
         "**I could not find that in your indexed material, so I am not going "
@@ -128,6 +155,21 @@ def ungrounded_reply(trace: list) -> Optional[str]:
         "Add the source to your corpus and re-index, or ask me something the "
         "corpus actually covers."
     )
+
+
+def needs_unaided_answer(trace: list, prompt: str) -> bool:
+    """A general question that was mis-routed into a search that found
+    nothing. The tool was a mistake; the question still deserves an answer."""
+    if not trace or is_corpus_scoped(prompt):
+        return False
+    searched = [t for t in trace if t.get("retrieval")]
+    return bool(searched) and not any(t.get("citations") for t in trace)
+
+
+UNAIDED_NOTE = (
+    "*Answered from the model's own knowledge — this is not from your "
+    "documents, and it carries no citation.*\n\n"
+)
 
 
 def sources_block(trace: list) -> str:
@@ -390,6 +432,17 @@ class Kernel:
 
             if not tool_calls:
                 reply = (_get(message, "content") or "").strip()
+                if needs_unaided_answer(trace, prompt):
+                    # The router sent a general question into a search tool and
+                    # it found nothing. The tool was the mistake — the question
+                    # still deserves an answer.
+                    unaided = self._answer_unaided(prompt, history)
+                    if unaided:
+                        reply = UNAIDED_NOTE + unaided
+                        self.audit.append(
+                            "unaided_answer",
+                            {"prompt": prompt, "reason": "retrieval empty; question not corpus-scoped"},
+                        )
                 self.audit.append(
                     "chat" if not trace else "chat_after_tools",
                     {
@@ -399,7 +452,7 @@ class Kernel:
                     },
                 )
                 self._archive_exchange(prompt, reply, trace)
-                return self._result(reply, trace, memories, started)
+                return self._result(reply, trace, memories, started, prompt)
 
             messages.append(
                 {
@@ -480,11 +533,20 @@ class Kernel:
                 # empty. The model does not get to narrate either one: left to
                 # itself it prints the unsaved document, or invents the spec it
                 # could not find. Stream the kernel's statement of fact instead.
-                held = blocked_reply(trace) or ungrounded_reply(trace)
+                held = blocked_reply(trace) or ungrounded_reply(trace, prompt)
                 if held:
                     reply = held
                     for piece in held.split(" "):
                         yield {"type": "token", "text": piece + " "}
+                elif needs_unaided_answer(trace, prompt):
+                    unaided = self._answer_unaided(prompt, history)
+                    reply = (UNAIDED_NOTE + unaided) if unaided else reply
+                    for piece in reply.split(" "):
+                        yield {"type": "token", "text": piece + " "}
+                    self.audit.append(
+                        "unaided_answer",
+                        {"prompt": prompt, "reason": "retrieval empty; question not corpus-scoped"},
+                    )
                 elif not trace:
                     # No tools involved: re-run streamed so the user sees tokens.
                     reply = ""
@@ -508,7 +570,7 @@ class Kernel:
                     },
                 )
                 self._archive_exchange(prompt, reply, trace)
-                yield {"type": "done", **self._result(reply.strip(), trace, memories, started)}
+                yield {"type": "done", **self._result(reply.strip(), trace, memories, started, prompt)}
                 return
 
             messages.append(
@@ -606,6 +668,27 @@ class Kernel:
         except Exception:
             pass
         return f"Done — '{outcome['tool']}' ran: {json.dumps(outcome['result'], default=str)}"
+
+    def _answer_unaided(self, prompt: str, history: Optional[list] = None) -> str:
+        """Answer a general question the router wrongly sent to a search tool.
+
+        Small models cannot reliably decline to call a tool — llama3.2 scores
+        0% on that discrimination in our own evals — so 'what is 5G?' ends up
+        in the spec corpus, finds nothing, and the user gets a refusal to a
+        question that never needed a document. Re-ask with no tools attached
+        and answer it plainly, labelled as ungrounded so it is never mistaken
+        for something the corpus supports.
+        """
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages.extend(history or [])
+        messages.append({"role": "user", "content": prompt})
+        try:
+            response = self.client.chat(
+                model=self.model, messages=messages, options={"temperature": 0}
+            )
+        except Exception:
+            return ""
+        return (_get(_get(response, "message", {}), "content", "") or "").strip()
 
     def _author_content(self, name: str, args: dict, prompt: str) -> dict:
         """Make the model WRITE the document instead of describing it.
@@ -742,14 +825,15 @@ class Kernel:
         }
 
     def _result(
-        self, reply: str, trace: list, memories: list, started: float
+        self, reply: str, trace: list, memories: list, started: float,
+        prompt: str = "",
     ) -> dict:
         return {
             # The kernel — not the model — has the last word on whether an
             # action ran and whether an answer is grounded.
             "reply": (
                 blocked_reply(trace)
-                or ungrounded_reply(trace)
+                or ungrounded_reply(trace, prompt)
                 or (reply + sources_block(trace))
             ),
             "trace": trace,
