@@ -10,6 +10,24 @@ from .. import config
 from ..registry import Tool, ToolError
 
 _FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _\-]{0,80}$")
+_LEADING_H1_RE = re.compile(r"^#\s+(?P<heading>[^\n]*)\n?")
+
+
+def _same_heading(a: str, b: str) -> bool:
+    """Compare a title and a heading the way a reader would: case,
+    punctuation and spacing are not what makes them different."""
+    normalize = lambda s: re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+    return bool(normalize(a)) and normalize(a) == normalize(b)
+
+
+def _strip_duplicate_title(body: str, title: str) -> str:
+    """Small models repeat the title as a leading H1 in the body — often
+    with different case ('ideas' vs '# Ideas'), which an exact match
+    misses, leaving the document with two stacked titles."""
+    match = _LEADING_H1_RE.match(body)
+    if match and _same_heading(title, match.group("heading")):
+        return body[match.end():].lstrip()
+    return body
 
 
 class MarkdownParams(BaseModel):
@@ -38,10 +56,7 @@ def write_markdown(filename: str, title: str, content: str) -> dict:
         raise ToolError("Refused: path escapes the sandbox directory.")
 
     title = title.strip()
-    body = content.strip()
-    # Small models often repeat the title as a leading H1 in the body.
-    if body.startswith(f"# {title}"):
-        body = body[len(f"# {title}"):].lstrip()
+    body = _strip_duplicate_title(content.strip(), title)
 
     document = f"# {title}\n\n{body}\n\n---\n*Generated locally by LLM OS on {time.strftime('%Y-%m-%d %H:%M:%S')}*\n"
     target.write_text(document, encoding="utf-8")
