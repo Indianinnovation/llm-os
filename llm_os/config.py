@@ -32,10 +32,19 @@ SCHEDULES_FILE = Path(os.environ.get("SCHEDULES_FILE", BASE_DIR / "schedules.jso
 SCHEDULER_ENABLED = os.environ.get("LLM_OS_SCHEDULER", "1") == "1"
 
 # Tools that may not run until a human approves them. Comma-separated.
-# Default: nothing is gated — opt in deliberately, e.g.
+#
+# Gated BY DEFAULT: every built-in that changes something outside the
+# kernel. "The model proposes, a human authorizes" has to be the state a
+# fresh install is already in — a guarantee you must remember to switch
+# on is not a guarantee. Add your own side-effecting tools here (an MCP
+# server's execute_remediation, send_email, …):
 #   LLM_OS_APPROVAL_TOOLS=write_markdown,execute_remediation
+# Ungating is possible but deliberate: LLM_OS_APPROVAL_TOOLS=""
+DEFAULT_APPROVAL_TOOLS = "write_markdown"
 APPROVAL_TOOLS = [
-    t.strip() for t in os.environ.get("LLM_OS_APPROVAL_TOOLS", "").split(",") if t.strip()
+    t.strip()
+    for t in os.environ.get("LLM_OS_APPROVAL_TOOLS", DEFAULT_APPROVAL_TOOLS).split(",")
+    if t.strip()
 ]
 
 # MCP server definitions, Claude-Desktop-compatible {"mcpServers": {...}}.

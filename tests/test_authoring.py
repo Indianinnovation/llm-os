@@ -158,3 +158,23 @@ def test_authoring_is_audited(tmp_path, monkeypatch):
     kernel.handle("Write a markdown note called ideas with 3 startup ideas")
     events = [r["event"] for r in kernel.audit.tail(50)]
     assert "content_authored" in events
+
+
+def test_write_markdown_is_gated_by_default():
+    # A guarantee you must remember to switch on is not a guarantee.
+    import importlib
+
+    from llm_os import config as fresh
+    importlib.reload(fresh)
+    assert "write_markdown" in fresh.APPROVAL_TOOLS
+
+
+def test_gate_can_be_opened_deliberately(monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("LLM_OS_APPROVAL_TOOLS", "")
+    from llm_os import config as fresh
+    importlib.reload(fresh)
+    assert fresh.APPROVAL_TOOLS == []
+    monkeypatch.undo()
+    importlib.reload(fresh)
