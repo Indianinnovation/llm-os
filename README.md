@@ -274,13 +274,22 @@ and run the bare daemon (same binary, same models, no updater):
 ```bash
 # 1. Quit the Ollama menu-bar app, and remove it from
 #    System Settings → General → Login Items
-# 2. Run the bare server, bound to loopback only:
-OLLAMA_HOST=127.0.0.1:11434 ollama serve
+# 2. Run the bare server: loopback-only AND cloud/remote features off
+OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 ollama serve
 # 3. Verify: zero non-loopback connections, before and after inference
 lsof -n -P -i TCP -a -p $(pgrep -f "ollama serve") | grep -v 127.0.0.1
 ```
 
-The bare daemon only touches the network when you explicitly
+**`OLLAMA_NO_CLOUD=1` matters.** Recent Ollama versions ship
+`OLLAMA_NO_CLOUD: false` and `OLLAMA_REMOTES: [ollama.com]` **by
+default — in the bare daemon, not just the desktop app**. Our egress
+sentinel caught the daemon opening a TLS connection to ollama.com
+(34.36.133.15:443, certificate CN verified) and recorded it in the
+audit chain as an `egress_violation`; setting `OLLAMA_NO_CLOUD=1`
+stops it. This is exactly what the sentinel exists for — the guarantee
+is enforced and logged, not assumed.
+
+The bare daemon then only touches the network when you explicitly
 `ollama pull`. Optionally block the vendor domain outright
 (model pulls via `registry.ollama.ai` keep working):
 

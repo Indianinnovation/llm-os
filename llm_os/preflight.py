@@ -167,6 +167,29 @@ def check_engine_egress(report: PreflightReport) -> None:
         report.add("Engine egress", PASS, "zero non-loopback connections")
 
 
+def check_engine_cloud_disabled(report: PreflightReport) -> None:
+    """Ollama ships cloud/remote features ON by default — even the bare
+    daemon reaches ollama.com. The engine must run with OLLAMA_NO_CLOUD=1."""
+    pids = subprocess.run(
+        ["pgrep", "-f", "ollama serve"], capture_output=True, text=True
+    ).stdout.split()
+    if not pids:
+        return  # engine check already covers a missing daemon
+    for pid in pids:
+        env = subprocess.run(
+            ["ps", "-p", pid, "-wwE", "-o", "command="],
+            capture_output=True, text=True,
+        ).stdout
+        if "OLLAMA_NO_CLOUD=1" in env or "OLLAMA_NO_CLOUD=true" in env:
+            report.add("Engine cloud features off", PASS, "OLLAMA_NO_CLOUD=1")
+            return
+    report.add(
+        "Engine cloud features off", FAIL,
+        "engine is running WITHOUT OLLAMA_NO_CLOUD=1 — it can reach ollama.com",
+        "Restart it: OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 ollama serve",
+    )
+
+
 def check_streamlit_telemetry(report: PreflightReport, config_path: Path) -> None:
     try:
         text = config_path.read_text()
@@ -262,6 +285,7 @@ def run_preflight(mode: str = "native") -> PreflightReport:
         check_model_integrity(report)
     check_desktop_app(report)
     check_engine_loopback(report)
+    check_engine_cloud_disabled(report)
     check_engine_egress(report)
     check_streamlit_telemetry(report, Path(config.BASE_DIR) / ".streamlit" / "config.toml")
     check_memory_telemetry(report)
