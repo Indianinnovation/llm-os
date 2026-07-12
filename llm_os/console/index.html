@@ -5,235 +5,681 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LLM OS — System Console</title>
 <style>
+  /* ── design tokens (validated categorical palette; light + dark) ───────── */
   :root {
-    --surface: #fcfcfb; --surface-2: #f4f4f2; --line: #e3e3df;
-    --text: #0b0b0b; --text-2: #52514e;
-    --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --accent: #2a78d6;
+    --surface:    #fcfcfb;
+    --surface-2:  #f5f5f3;
+    --surface-3:  #eeeeeb;
+    --line:       #e3e3df;
+    --line-2:     #d5d5d0;
+    --text:       #0b0b0b;
+    --text-2:     #52514e;
+    --text-3:     #86857f;
+    --accent:     #2a78d6;
+    --accent-sub: #e8f0fb;
+    --good:       #0ca30c;
+    --warn:       #fab219;
+    --serious:    #ec835a;
+    --crit:       #d03b3b;
+    --good-sub:   #e7f5e7;
+    --crit-sub:   #fbeaea;
+    --warn-sub:   #fdf3e0;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --r: 10px;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.04);
+  }
+  :root[data-theme="dark"], :root:not([data-theme="light"]) {
+    color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --surface: #1a1a19; --surface-2: #232322; --line: #2e2e2c;
-      --text: #ffffff; --text-2: #c3c2b7;
-      --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --accent: #3987e5;
+    :root:not([data-theme="light"]) {
+      --surface:    #1a1a19;
+      --surface-2:  #212120;
+      --surface-3:  #2a2a28;
+      --line:       #2e2e2c;
+      --line-2:     #3a3a37;
+      --text:       #ffffff;
+      --text-2:     #c3c2b7;
+      --text-3:     #8b8a82;
+      --accent:     #3987e5;
+      --accent-sub: #16283f;
+      --good:       #0ca30c;
+      --warn:       #fab219;
+      --serious:    #ec835a;
+      --crit:       #d03b3b;
+      --good-sub:   #12280f;
+      --crit-sub:   #2c1414;
+      --warn-sub:   #2b2109;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25);
+      color-scheme: dark;
     }
   }
+  :root[data-theme="dark"] {
+    --surface:#1a1a19; --surface-2:#212120; --surface-3:#2a2a28;
+    --line:#2e2e2c; --line-2:#3a3a37;
+    --text:#fff; --text-2:#c3c2b7; --text-3:#8b8a82;
+    --accent:#3987e5; --accent-sub:#16283f;
+    --good-sub:#12280f; --crit-sub:#2c1414; --warn-sub:#2b2109;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0; background: var(--surface); color: var(--text);
-    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: grid; grid-template-columns: 232px 1fr; height: 100vh; overflow: hidden;
   }
-  header {
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    padding: 18px 24px; border-bottom: 1px solid var(--line);
+  @media (max-width: 860px) { body { grid-template-columns: 64px 1fr; } .navlabel, .brandsub { display: none; } }
+
+  /* ── sidebar ───────────────────────────────────────────────────────────── */
+  aside {
+    background: var(--surface-2); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; overflow-y: auto;
   }
-  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
-  header .sub { color: var(--text-2); font-size: 13px; }
-  .spacer { flex: 1; }
-  nav { display: flex; gap: 4px; padding: 10px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px; }
+  .brand .logo {
+    width: 30px; height: 30px; border-radius: 8px; background: var(--accent);
+    display: grid; place-items: center; font-size: 16px; flex: none;
+  }
+  .brand h1 { font-size: 14px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+  .brandsub { font-size: 11px; color: var(--text-3); margin: 0; }
+
   nav button {
+    display: flex; align-items: center; gap: 10px; width: 100%;
     background: none; border: 1px solid transparent; color: var(--text-2);
-    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13.5px;
+    font-family: inherit; text-align: left; transition: background .12s, color .12s;
   }
-  nav button:hover { background: var(--surface-2); }
+  nav button:hover { background: var(--surface-3); color: var(--text); }
   nav button[aria-selected="true"] {
-    background: var(--surface-2); border-color: var(--line); color: var(--text); font-weight: 600;
+    background: var(--surface); border-color: var(--line); color: var(--text);
+    font-weight: 600; box-shadow: var(--shadow);
   }
-  main { padding: 24px; max-width: 1180px; }
+  nav button .ico { width: 18px; text-align: center; font-size: 14px; flex: none; }
+  nav .dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+  .sidefoot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+  .statline { display: flex; align-items: center; gap: 7px; padding: 4px 8px;
+              font-size: 11.5px; color: var(--text-3); }
+  .statline b { color: var(--text-2); font-weight: 600; font-family: var(--mono); font-size: 11px; }
+
+  /* ── main ──────────────────────────────────────────────────────────────── */
+  main { overflow-y: auto; }
+  .head {
+    position: sticky; top: 0; z-index: 5; background: var(--surface);
+    border-bottom: 1px solid var(--line); padding: 18px 28px 14px;
+    display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;
+  }
+  .head h2 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -.015em; }
+  .head p { margin: 2px 0 0; color: var(--text-2); font-size: 13px; max-width: 620px; }
+  .head .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .wrap { padding: 22px 28px 40px; max-width: 1120px; }
   section { display: none; }
   section.active { display: block; }
-  h2 { font-size: 15px; margin: 0 0 4px; }
-  .hint { color: var(--text-2); font-size: 13px; margin: 0 0 18px; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 22px; }
-  .tile { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
-  .tile .label { color: var(--text-2); font-size: 12px; }
-  .tile .value { font-size: 26px; font-weight: 650; margin-top: 4px; }
-  .tile .value.small { font-size: 17px; }
-  .check {
-    display: flex; gap: 12px; align-items: flex-start; padding: 11px 14px;
-    border: 1px solid var(--line); border-left-width: 4px; border-radius: 10px;
-    background: var(--surface-2); margin-bottom: 8px;
-  }
-  .check .name { font-weight: 600; min-width: 220px; }
-  .check .detail { color: var(--text-2); font-size: 13px; }
-  .check .fix { font-family: var(--mono); font-size: 12px; color: var(--crit); margin-top: 4px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  th { text-align: left; color: var(--text-2); font-weight: 600; padding: 9px 10px; border-bottom: 1px solid var(--line); }
-  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  tr:hover td { background: var(--surface-2); }
-  .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
-  code, .mono { font-family: var(--mono); font-size: 12.5px; }
-  .pill { padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 650; border: 1px solid var(--line); white-space: nowrap; }
-  button.action {
+
+  /* ── components ────────────────────────────────────────────────────────── */
+  .btn {
     background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
-    padding: 8px 14px; border-radius: 9px; cursor: pointer; font-size: 13px;
+    padding: 7px 13px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    font-family: inherit; display: inline-flex; align-items: center; gap: 6px;
+    transition: border-color .12s, background .12s; text-decoration: none;
   }
-  button.action:hover { border-color: var(--accent); }
-  button.danger:hover { border-color: var(--crit); color: var(--crit); }
-  input[type=search] {
-    background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
-    padding: 8px 12px; border-radius: 9px; font-size: 14px; min-width: 260px;
+  .btn:hover { border-color: var(--line-2); background: var(--surface-3); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.danger:hover { border-color: var(--crit); color: var(--crit); }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  input[type=search], input[type=text], select {
+    background: var(--surface); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 11px; border-radius: 8px; font-size: 13.5px; font-family: inherit;
+    outline: none; transition: border-color .12s, box-shadow .12s;
   }
-  .row { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-sub); }
+
+  .row { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
   .muted { color: var(--text-2); }
-  .bar { height: 6px; border-radius: 3px; background: var(--accent); }
-  /* chat */
-  #thread { display: flex; flex-direction: column; gap: 12px; min-height: 220px; }
-  .msg { max-width: 780px; padding: 11px 15px; border-radius: 12px; border: 1px solid var(--line); white-space: pre-wrap; }
-  .msg.user { align-self: flex-end; background: var(--surface-2); }
-  .msg.bot { background: transparent; }
-  .msg.bot.streaming::after { content: "▌"; opacity: .6; }
-  .toolev {
-    display: inline-flex; align-items: center; gap: 8px; font-size: 12px;
-    color: var(--text-2); border: 1px solid var(--line); border-radius: 999px;
-    padding: 3px 11px; margin: 2px 6px 2px 0; font-family: var(--mono);
+  .dim { color: var(--text-3); }
+  .mono { font-family: var(--mono); font-size: 12px; }
+
+  .card { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 12px; }
+  .tile { padding: 13px 15px; }
+  .tile .k { font-size: 11.5px; color: var(--text-3); text-transform: uppercase;
+             letter-spacing: .04em; font-weight: 600; }
+  .tile .v { font-size: 17px; font-weight: 650; margin-top: 5px; display: flex; align-items: center; gap: 6px; }
+  .tile .s { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+
+  /* hero verdict */
+  .verdict {
+    display: flex; align-items: center; gap: 16px; padding: 20px 22px;
+    border-radius: 12px; border: 1px solid var(--line); margin-bottom: 18px;
   }
-  .toolev.run { border-color: var(--accent); color: var(--accent); }
-  .toolev.err { border-color: var(--warn); color: var(--warn); }
+  .verdict.ok  { background: var(--good-sub); border-color: color-mix(in srgb, var(--good) 30%, var(--line)); }
+  .verdict.bad { background: var(--crit-sub); border-color: color-mix(in srgb, var(--crit) 35%, var(--line)); }
+  .verdict .mark { font-size: 27px; line-height: 1; }
+  .verdict h3 { margin: 0; font-size: 16.5px; font-weight: 650; }
+  .verdict p  { margin: 3px 0 0; font-size: 13px; color: var(--text-2); }
+
+  .check {
+    display: flex; gap: 12px; align-items: flex-start; padding: 12px 15px;
+    border-bottom: 1px solid var(--line);
+  }
+  .check:last-child { border-bottom: 0; }
+  .check .st { font-weight: 700; width: 15px; flex: none; }
+  .check .nm { font-weight: 600; font-size: 13.5px; }
+  .check .dt { color: var(--text-2); font-size: 12.5px; margin-top: 1px; }
+  .check .fx { font-family: var(--mono); font-size: 11.5px; color: var(--crit); margin-top: 5px; }
+  .grouphead { font-size: 11.5px; font-weight: 700; color: var(--text-3);
+               text-transform: uppercase; letter-spacing: .05em; margin: 22px 0 8px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    text-align: left; color: var(--text-3); font-weight: 600; font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: .04em; padding: 10px 14px;
+    border-bottom: 1px solid var(--line); background: var(--surface-2);
+    position: sticky; top: 0;
+  }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: var(--surface-2); }
+  .tablecard { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+  .scroll { max-height: 60vh; overflow: auto; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+    border-radius: 999px; font-size: 11px; font-weight: 650; border: 1px solid var(--line);
+    background: var(--surface); white-space: nowrap;
+  }
+  .bar { height: 5px; border-radius: 3px; background: var(--accent); min-width: 2px; }
+  .bartrack { background: var(--surface-3); border-radius: 3px; height: 5px; width: 100%; }
+
+  .empty { padding: 40px 20px; text-align: center; color: var(--text-3); font-size: 13.5px; }
+  .skel { background: var(--surface-3); border-radius: 6px; height: 13px; animation: p 1.2s infinite; }
+  @keyframes p { 50% { opacity: .5; } }
+
+  /* ── chat ──────────────────────────────────────────────────────────────── */
+  .chatwrap { display: flex; flex-direction: column; height: calc(100vh - 84px); }
+  #thread { flex: 1; overflow-y: auto; padding: 22px 28px; display: flex;
+            flex-direction: column; gap: 14px; }
+  .msg { display: flex; gap: 11px; max-width: 780px; }
+  .msg .av {
+    width: 27px; height: 27px; border-radius: 7px; flex: none; display: grid;
+    place-items: center; font-size: 13px; border: 1px solid var(--line);
+    background: var(--surface-2);
+  }
+  .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.user .bubble {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .bubble {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 14px; white-space: pre-wrap; word-break: break-word; font-size: 14px;
+  }
+  .bubble.streaming::after {
+    content: "▌"; animation: b 1s step-end infinite; margin-left: 1px; opacity: .7;
+  }
+  @keyframes b { 50% { opacity: 0; } }
+  .events { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 0 38px; }
+  .ev {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px;
+    font-family: var(--mono); color: var(--text-2); border: 1px solid var(--line);
+    background: var(--surface-2); border-radius: 999px; padding: 3px 10px;
+  }
+  .ev.run { border-color: var(--accent); color: var(--accent); }
+  .ev.run::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
+                    background: var(--accent); animation: p 1s infinite; }
+  .ev.err { border-color: var(--warn); color: var(--warn); }
+  .composer {
+    border-top: 1px solid var(--line); padding: 14px 28px 18px; background: var(--surface);
+  }
+  .composer .row { max-width: 780px; }
+  #prompt { flex: 1; padding: 11px 14px; font-size: 14px; }
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; max-width: 780px; }
   .chip {
     border: 1px solid var(--line); background: var(--surface-2); color: var(--text-2);
-    border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer;
+    border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
   }
   .chip:hover { border-color: var(--accent); color: var(--text); }
+  .welcome { margin: auto; text-align: center; max-width: 440px; }
+  .welcome .big { font-size: 34px; margin-bottom: 8px; }
+  .welcome h3 { margin: 0 0 6px; font-size: 17px; font-weight: 650; }
+  .welcome p { margin: 0; color: var(--text-2); font-size: 13.5px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>🧠 LLM OS — System Console</h1>
-  <span class="sub">the control plane for a private AI runtime</span>
-  <span class="spacer"></span>
-  <span id="hdr" class="sub mono"></span>
-</header>
 
-<nav id="nav">
-  <button data-view="chat" aria-selected="true">💬 Chat</button>
-  <button data-view="trust" aria-selected="false">🔒 Trust</button>
-  <button data-view="audit" aria-selected="false">🧾 Audit</button>
-  <button data-view="memory" aria-selected="false">🧠 Memory</button>
-  <button data-view="tools" aria-selected="false">🔧 Tools</button>
-  <button data-view="models" aria-selected="false">📦 Models</button>
-</nav>
+<aside>
+  <div class="brand">
+    <div class="logo">🧠</div>
+    <div>
+      <h1>LLM OS</h1>
+      <p class="brandsub">System Console</p>
+    </div>
+  </div>
+
+  <nav id="nav">
+    <button data-view="chat" aria-selected="true"><span class="ico">💬</span><span class="navlabel">Chat</span></button>
+    <button data-view="trust" aria-selected="false"><span class="ico">🔒</span><span class="navlabel">Trust</span><span class="dot" id="trustDot"></span></button>
+    <button data-view="audit" aria-selected="false"><span class="ico">🧾</span><span class="navlabel">Audit</span></button>
+    <button data-view="memory" aria-selected="false"><span class="ico">🧠</span><span class="navlabel">Memory</span></button>
+    <button data-view="tools" aria-selected="false"><span class="ico">🔧</span><span class="navlabel">Tools</span></button>
+    <button data-view="models" aria-selected="false"><span class="ico">📦</span><span class="navlabel">Models</span></button>
+  </nav>
+
+  <div class="sidefoot">
+    <div class="statline"><span id="engDot">●</span> engine <b id="engModel">…</b></div>
+    <div class="statline"><span id="senDot">●</span> egress <b id="senText">…</b></div>
+    <div class="statline"><span id="pinDot">●</span> pinning <b id="pinText">…</b></div>
+    <button class="btn" style="width:100%;margin-top:10px;justify-content:center" onclick="toggleTheme()">
+      <span id="themeIcon">🌗</span><span class="navlabel">Theme</span>
+    </button>
+  </div>
+</aside>
 
 <main>
+  <!-- CHAT -->
   <section id="chat" class="active">
-    <h2>Chat</h2>
-    <p class="hint">The model routes; sandboxed tools execute. Every call is
-      hash-chained into the audit log — the ids below are clickable proof.</p>
-    <div id="thread"></div>
-    <div class="row" style="margin-top:16px">
-      <input type="search" id="prompt" style="flex:1;min-width:320px"
-             placeholder="Ask LLM OS…  (e.g. What is 4539 × 23?)"
-             onkeydown="if(event.key==='Enter')send()">
-      <button class="action" id="sendBtn" onclick="send()">Send</button>
-      <button class="action" onclick="newChat()">New chat</button>
+    <div class="head">
+      <div>
+        <h2>Chat</h2>
+        <p>The model routes; sandboxed tools execute. Every call is hash-chained into the audit log.</p>
+      </div>
+      <div class="actions"><button class="btn" onclick="newChat()">＋ New chat</button></div>
     </div>
-    <div id="suggest" class="row" style="margin-top:4px"></div>
+    <div class="chatwrap">
+      <div id="thread"></div>
+      <div class="composer">
+        <div class="row">
+          <input id="prompt" type="text" placeholder="Ask LLM OS…   (⌘K)"
+                 onkeydown="if(event.key==='Enter')send()">
+          <button class="btn primary" id="sendBtn" onclick="send()">Send</button>
+        </div>
+        <div class="chips" id="chips"></div>
+      </div>
+    </div>
   </section>
 
+  <!-- TRUST -->
   <section id="trust">
-    <h2>Trust posture</h2>
-    <p class="hint">Live checks — the same gate the launcher enforces before startup.
-      A red check means the privacy guarantee is not currently held.</p>
-    <div class="tiles" id="trustTiles"></div>
-    <div id="checks"></div>
+    <div class="head">
+      <div>
+        <h2>Trust posture</h2>
+        <p>Live checks — the same gate the launcher enforces before startup. A red check means a privacy guarantee is not currently held.</p>
+      </div>
+      <div class="actions"><button class="btn" onclick="loadTrust()">↻ Re-check</button></div>
+    </div>
+    <div class="wrap">
+      <div id="verdict"></div>
+      <div class="tiles" id="trustTiles"></div>
+      <div id="checks"></div>
+    </div>
   </section>
 
+  <!-- AUDIT -->
   <section id="audit">
-    <h2>Audit chain</h2>
-    <p class="hint">Every routing decision and tool execution, hash-chained to the
-      previous record. Editing history breaks verification.</p>
-    <div class="row">
-      <button class="action" onclick="loadAudit()">↻ Refresh</button>
-      <a class="action" style="text-decoration:none" href="/audit/export">⬇ Export (.jsonl)</a>
-      <span id="chainState" class="mono"></span>
+    <div class="head">
+      <div>
+        <h2>Audit chain</h2>
+        <p>Every routing decision and tool execution, hash-chained to the previous record. Edit history and verification fails.</p>
+      </div>
+      <div class="actions">
+        <span id="chainState"></span>
+        <a class="btn" href="/audit/export">⬇ Export</a>
+      </div>
     </div>
-    <div class="wrap"><table>
-      <thead><tr><th>Time</th><th>Event</th><th>Tool</th><th>Detail</th><th>Hash</th></tr></thead>
-      <tbody id="auditRows"></tbody>
-    </table></div>
+    <div class="wrap">
+      <div class="row" style="margin-bottom:12px">
+        <input type="search" id="auditq" placeholder="Filter records…" oninput="renderAudit()">
+        <select id="auditEvent" onchange="renderAudit()"><option value="">All events</option></select>
+        <span class="dim" id="auditCount"></span>
+      </div>
+      <div class="tablecard"><div class="scroll"><table>
+        <thead><tr><th>Time</th><th>Event</th><th>Tool</th><th>Detail</th><th>Hash</th></tr></thead>
+        <tbody id="auditRows"></tbody>
+      </table></div></div>
+    </div>
   </section>
 
+  <!-- MEMORY -->
   <section id="memory">
-    <h2>Memory</h2>
-    <p class="hint">Everything the system remembers about you — searchable, and
-      erasable. Nothing here has ever left this machine.</p>
-    <div class="row">
-      <input type="search" id="memq" placeholder="Search memories…"
-             onkeydown="if(event.key==='Enter')loadMemory()">
-      <button class="action" onclick="loadMemory()">Search</button>
-      <button class="action danger" onclick="forgetAll()">🗑 Forget everything</button>
-      <span id="memCount" class="muted"></span>
+    <div class="head">
+      <div>
+        <h2>Memory</h2>
+        <p>Everything the system remembers about you — searchable, and erasable. Nothing here has ever left this machine.</p>
+      </div>
+      <div class="actions">
+        <button class="btn danger" onclick="forgetAll()">🗑 Forget everything</button>
+      </div>
     </div>
-    <div class="wrap"><table>
-      <thead><tr><th>When</th><th>Kind</th><th>Memory</th><th></th></tr></thead>
-      <tbody id="memRows"></tbody>
-    </table></div>
+    <div class="wrap">
+      <div class="row" style="margin-bottom:12px">
+        <input type="search" id="memq" placeholder="Search memories…"
+               onkeydown="if(event.key==='Enter')loadMemory()">
+        <button class="btn" onclick="loadMemory()">Search</button>
+        <span class="dim" id="memCount"></span>
+      </div>
+      <div class="tablecard"><div class="scroll"><table>
+        <thead><tr><th style="width:150px">When</th><th style="width:90px">Kind</th><th>Memory</th><th></th></tr></thead>
+        <tbody id="memRows"></tbody>
+      </table></div></div>
+    </div>
   </section>
 
+  <!-- TOOLS -->
   <section id="tools">
-    <h2>Tools</h2>
-    <p class="hint">Everything the model is allowed to call — built-ins and MCP
-      servers — with usage measured from the audit log.</p>
-    <div class="wrap"><table>
-      <thead><tr><th>Tool</th><th>Source</th><th>Calls</th><th>Failures</th><th>Avg latency</th><th>Usage</th></tr></thead>
-      <tbody id="toolRows"></tbody>
-    </table></div>
+    <div class="head">
+      <div>
+        <h2>Tools</h2>
+        <p>Everything the model is allowed to call — built-ins and MCP servers — with usage measured from the audit log.</p>
+      </div>
+    </div>
+    <div class="wrap">
+      <div class="tiles" id="toolTiles" style="margin-bottom:16px"></div>
+      <div class="tablecard"><div class="scroll"><table>
+        <thead><tr><th>Tool</th><th>Source</th><th style="width:70px">Calls</th>
+          <th style="width:80px">Failures</th><th style="width:100px">Avg latency</th><th style="width:150px">Usage</th></tr></thead>
+        <tbody id="toolRows"></tbody>
+      </table></div></div>
+    </div>
   </section>
 
+  <!-- MODELS -->
   <section id="models">
-    <h2>Models</h2>
-    <p class="hint">The kernel refuses to serve a model whose content digest does
-      not match its pin. Approve models deliberately:
-      <code>python scripts/launch.py --approve-models</code></p>
-    <div class="wrap"><table>
-      <thead><tr><th>Model</th><th>Digest</th><th>Status</th></tr></thead>
-      <tbody id="modelRows"></tbody>
-    </table></div>
+    <div class="head">
+      <div>
+        <h2>Models</h2>
+        <p>The kernel refuses to serve a model whose content digest does not match its pin. Approve deliberately:
+          <code class="mono">python scripts/launch.py --approve-models</code></p>
+      </div>
+    </div>
+    <div class="wrap">
+      <div class="tablecard"><table>
+        <thead><tr><th>Model</th><th>Digest</th><th style="width:190px">Status</th></tr></thead>
+        <tbody id="modelRows"></tbody>
+      </table></div>
+    </div>
   </section>
 </main>
 
 <script>
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
-const COLOR = { PASS: "var(--good)", WARN: "var(--warn)", FAIL: "var(--crit)" };
-const ICON  = { PASS: "✓", WARN: "◦", FAIL: "✗" };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const api = async (p, o) => { const r = await fetch(p, o); if (!r.ok) throw new Error(await r.text()); return r.json(); };
+const C = { PASS: "var(--good)", WARN: "var(--warn)", FAIL: "var(--crit)" };
+const I = { PASS: "✓", WARN: "◦", FAIL: "✗" };
 
-async function api(path, opts) {
-  const r = await fetch(path, opts);
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
+/* theme */
+function toggleTheme() {
+  const now = document.documentElement.getAttribute("data-theme");
+  const next = now === "dark" ? "light" : now === "light" ? "dark"
+    : (matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark");
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("llmos-theme", next);
 }
+const saved = localStorage.getItem("llmos-theme");
+if (saved) document.documentElement.setAttribute("data-theme", saved);
 
+/* nav */
+const LOADERS = { chat: () => $("prompt").focus(), trust: loadTrust, audit: loadAudit,
+                  memory: loadMemory, tools: loadTools, models: loadModels };
 document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("#nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === b.dataset.view));
-  ({ chat: () => $("prompt").focus(), trust: loadTrust, audit: loadAudit,
-     memory: loadMemory, tools: loadTools, models: loadModels })[b.dataset.view]();
+  LOADERS[b.dataset.view]();
+});
+addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault();
+    document.querySelector('#nav button[data-view="chat"]').click(); }
 });
 
-/* ── Chat: streaming + multi-turn ─────────────────────────────────────── */
-let history = [];          // [{role, content}] — replayed so follow-ups work
-let busy = false;
+/* ── status rail ───────────────────────────────────────────────────────── */
+async function loadStatus() {
+  try {
+    const h = await api("/health");
+    const viol = (h.egress_sentinel?.violations || []).length;
+    const set = (dot, text, color, label) => {
+      $(dot).style.color = color; $(text).textContent = label;
+    };
+    set("engDot", "engModel", h.engine === "ok" ? "var(--good)" : "var(--crit)", h.active_model || "—");
+    set("senDot", "senText", viol ? "var(--crit)" : "var(--good)", viol ? `${viol} violations` : "clean");
+    set("pinDot", "pinText", h.model_pinning === "enforced" ? "var(--good)" : "var(--warn)",
+        h.model_pinning || "—");
+    return h;
+  } catch {
+    $("engDot").style.color = "var(--crit)"; $("engModel").textContent = "unreachable";
+    return null;
+  }
+}
 
+/* ── trust ─────────────────────────────────────────────────────────────── */
+const CHECK_GROUPS = [
+  ["Engine", ["Engine reachable", "Routing model", "Embedding model (memory)", "Model digest pinned"]],
+  ["Isolation", ["No vendor update channel", "Engine bound to loopback", "Engine cloud features off", "Engine egress"]],
+  ["Telemetry", ["UI telemetry disabled", "Vector-store telemetry disabled"]],
+  ["System", ["MCP config", "Disk space"]],
+];
+
+async function loadTrust() {
+  $("checks").innerHTML = `<div class="card" style="padding:16px"><div class="skel" style="width:60%"></div></div>`;
+  const [h, p, a] = await Promise.all([
+    loadStatus(), api("/preflight").catch(() => null), api("/audit?n=1").catch(() => ({})),
+  ]);
+  const viol = (h?.egress_sentinel?.violations || []).length;
+  const ok = p?.ok && !viol && a.chain_valid !== false;
+
+  $("trustDot").style.background = ok ? "var(--good)" : "var(--crit)";
+  $("verdict").innerHTML = `
+    <div class="verdict ${ok ? "ok" : "bad"}">
+      <div class="mark">${ok ? "🛡️" : "⚠️"}</div>
+      <div>
+        <h3>${ok ? "All guarantees hold" : "Attention required"}</h3>
+        <p>${ok
+          ? "Every privacy check passes, nothing has left this machine, and the audit chain verifies."
+          : "One or more guarantees are not currently held — see the failing checks below."}</p>
+      </div>
+    </div>`;
+
+  const tile = (k, v, color, s) => `<div class="card tile"><div class="k">${k}</div>
+    <div class="v" style="color:${color}">${v}</div>${s ? `<div class="s">${s}</div>` : ""}</div>`;
+  const sen = h?.egress_sentinel || {};
+  $("trustTiles").innerHTML = [
+    tile("Preflight", p ? (p.ok ? "✓ all pass" : "✗ blocked") : "n/a",
+         p?.ok ? "var(--good)" : "var(--crit)",
+         p ? `${p.checks.filter(c => c.status === "PASS").length} of ${p.checks.length} checks` : ""),
+    tile("Egress sentinel", viol ? `✗ ${viol}` : "✓ clean", viol ? "var(--crit)" : "var(--good)",
+         `${sen.samples || 0} samples`),
+    tile("Audit chain", a.chain_valid ? "✓ verified" : a.chain_valid === false ? "✗ broken" : "—",
+         a.chain_valid ? "var(--good)" : "var(--crit)"),
+    tile("Model pinning", h?.model_pinning === "enforced" ? "✓ enforced" : "◦ unpinned",
+         h?.model_pinning === "enforced" ? "var(--good)" : "var(--warn)"),
+    tile("Memory", h?.memory?.enabled ? `${h.memory.records}` : "off", "var(--text)",
+         h?.memory?.enabled ? "records stored locally" : "disabled"),
+  ].join("");
+
+  if (!p) { $("checks").innerHTML = `<div class="empty">Preflight unavailable.</div>`; return; }
+
+  let html = "";
+  if (viol) {
+    html += `<div class="grouphead" style="color:var(--crit)">Egress violations</div>
+      <div class="card">${sen.violations.map(v => `
+        <div class="check"><span class="st" style="color:var(--crit)">✗</span><div>
+          <div class="nm">Traffic left this machine</div>
+          <div class="dt">${esc(v.remote)} · recorded in the audit chain (${esc(v.audit_id)})</div>
+          <div class="fx">Investigate before trusting this run.</div>
+        </div></div>`).join("")}</div>`;
+  }
+  const byName = Object.fromEntries(p.checks.map(c => [c.name, c]));
+  const seen = new Set();
+  for (const [group, names] of CHECK_GROUPS) {
+    const items = names.map(n => byName[n]).filter(Boolean);
+    items.forEach(c => seen.add(c.name));
+    if (!items.length) continue;
+    html += `<div class="grouphead">${group}</div><div class="card">${items.map(checkRow).join("")}</div>`;
+  }
+  const rest = p.checks.filter(c => !seen.has(c.name));
+  if (rest.length) html += `<div class="grouphead">Other</div><div class="card">${rest.map(checkRow).join("")}</div>`;
+  $("checks").innerHTML = html;
+}
+
+const checkRow = c => `
+  <div class="check">
+    <span class="st" style="color:${C[c.status]}">${I[c.status]}</span>
+    <div style="flex:1">
+      <div class="nm">${esc(c.name)}</div>
+      <div class="dt">${esc(c.detail)}</div>
+      ${c.status === "FAIL" && c.hint ? `<div class="fx">fix: ${esc(c.hint)}</div>` : ""}
+    </div>
+  </div>`;
+
+/* ── audit ─────────────────────────────────────────────────────────────── */
+let auditData = [];
+async function loadAudit() {
+  const d = await api("/audit?n=200");
+  auditData = d.records.slice().reverse();
+  $("chainState").innerHTML = d.chain_valid
+    ? `<span class="pill" style="color:var(--good)">✓ chain verified</span>`
+    : `<span class="pill" style="color:var(--crit)">✗ CHAIN BROKEN</span>`;
+  const events = [...new Set(auditData.map(r => r.event))].sort();
+  $("auditEvent").innerHTML = `<option value="">All events</option>` +
+    events.map(e => `<option>${esc(e)}</option>`).join("");
+  renderAudit();
+}
+function renderAudit() {
+  const q = $("auditq").value.toLowerCase();
+  const ev = $("auditEvent").value;
+  const rows = auditData.filter(r =>
+    (!ev || r.event === ev) &&
+    (!q || JSON.stringify(r).toLowerCase().includes(q)));
+  $("auditCount").textContent = `${rows.length} of ${auditData.length} records`;
+  $("auditRows").innerHTML = rows.length ? rows.map(r => {
+    const detail = r.event === "tool_execution"
+      ? `${esc(r.status)} · ${esc(JSON.stringify(r.params || {}).slice(0, 60))}`
+      : esc(String(r.prompt || r.detail || r.remote || "").slice(0, 60));
+    return `<tr>
+      <td class="mono dim">${esc((r.ts || "").replace("T", " ").slice(0, 19))}</td>
+      <td>${eventPill(r.event)}</td>
+      <td class="mono">${esc(r.tool || "—")}</td>
+      <td class="muted">${detail}</td>
+      <td class="mono dim">${esc((r.hash || "").slice(0, 8))}…</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="5" class="empty">No matching records.</td></tr>`;
+}
+const eventPill = ev => {
+  const bad = ev === "egress_violation" || ev === "memory_error";
+  const color = bad ? "var(--crit)" : ev === "model_verification" ? "var(--accent)"
+    : ev === "tool_execution" ? "var(--text-2)" : "var(--text-3)";
+  return `<span class="pill" style="color:${color}">${esc(ev)}</span>`;
+};
+
+/* ── memory ────────────────────────────────────────────────────────────── */
+async function loadMemory() {
+  const d = await api(`/memory?q=${encodeURIComponent($("memq").value || "")}&limit=200`);
+  $("memCount").textContent = d.enabled ? `${d.count} records stored locally` : "memory disabled";
+  $("memRows").innerHTML = (d.records || []).length ? d.records.map(m => `
+    <tr>
+      <td class="mono dim">${esc(m.ts)}</td>
+      <td><span class="pill">${esc(m.kind)}</span></td>
+      <td>${esc(m.text).slice(0, 260)}</td>
+      <td style="text-align:right">${m.id
+        ? `<button class="btn danger" onclick="forget('${esc(m.id)}')">forget</button>` : ""}</td>
+    </tr>`).join("")
+    : `<tr><td colspan="4" class="empty">No memories.</td></tr>`;
+}
+async function forget(id) { await fetch(`/memory/${id}`, { method: "DELETE" }); loadMemory(); }
+async function forgetAll() {
+  if (!confirm("Erase every memory? This cannot be undone.")) return;
+  await fetch("/memory/all", { method: "DELETE" }); loadMemory();
+}
+
+/* ── tools ─────────────────────────────────────────────────────────────── */
+async function loadTools() {
+  const [tools, stats] = await Promise.all([api("/tools"), api("/stats")]);
+  const by = Object.fromEntries(stats.tools.map(t => [t.tool, t]));
+  const max = Math.max(1, ...stats.tools.map(t => t.calls));
+  const totalCalls = stats.tools.reduce((s, t) => s + t.calls, 0);
+  const servers = new Set(tools.filter(t => t.source !== "builtin").map(t => t.source));
+
+  $("toolTiles").innerHTML = `
+    <div class="card tile"><div class="k">Tools available</div><div class="v">${tools.length}</div>
+      <div class="s">${tools.filter(t => t.source === "builtin").length} built-in · ${servers.size} MCP server(s)</div></div>
+    <div class="card tile"><div class="k">Calls recorded</div><div class="v">${totalCalls}</div>
+      <div class="s">from the audit log</div></div>
+    <div class="card tile"><div class="k">Failures</div>
+      <div class="v" style="color:${stats.tools.some(t => t.failures) ? "var(--warn)" : "var(--good)"}">
+        ${stats.tools.reduce((s, t) => s + t.failures, 0)}</div>
+      <div class="s">validation or tool errors</div></div>`;
+
+  $("toolRows").innerHTML = tools.map(t => {
+    const s = by[t.name] || { calls: 0, failures: 0, avg_ms: null };
+    const mcp = t.source !== "builtin";
+    return `<tr>
+      <td class="mono">${esc(t.name)}</td>
+      <td><span class="pill" style="color:${mcp ? "var(--accent)" : "var(--text-3)"}">${esc(t.source)}</span></td>
+      <td>${s.calls}</td>
+      <td style="color:${s.failures ? "var(--warn)" : "var(--text-3)"}">${s.failures}</td>
+      <td class="dim">${s.avg_ms != null ? s.avg_ms + " ms" : "—"}</td>
+      <td><div class="bartrack"><div class="bar" style="width:${Math.round(s.calls / max * 100)}%"></div></div></td>
+    </tr>`;
+  }).join("");
+}
+
+/* ── models ────────────────────────────────────────────────────────────── */
+async function loadModels() {
+  const d = await api("/models");
+  $("modelRows").innerHTML = d.models.map(m => {
+    const [label, color] = m.pinned ? ["✓ pinned", "var(--good)"]
+      : m.approved ? ["✗ DIGEST MISMATCH", "var(--crit)"] : ["◦ not approved", "var(--warn)"];
+    const active = m.name.startsWith(d.active)
+      ? ` <span class="pill" style="color:var(--accent)">active</span>` : "";
+    return `<tr>
+      <td class="mono">${esc(m.name)}${active}</td>
+      <td class="mono dim">${esc((m.digest || "").slice(0, 24))}…</td>
+      <td><span class="pill" style="color:${color}">${label}</span></td>
+    </tr>`;
+  }).join("");
+}
+
+/* ── chat ──────────────────────────────────────────────────────────────── */
+let history = [], busy = false;
 const SUGGESTIONS = [
   "What is 4539 multiplied by 23?",
   "How big is my Downloads folder?",
   "Write a markdown note called ideas with 3 startup ideas",
   "What is an LLM OS?",
 ];
-$("suggest").innerHTML = SUGGESTIONS.map(s =>
-  `<button class="chip" onclick="ask('${esc(s).replace(/'/g, "\\'")}')">${esc(s)}</button>`).join("");
+$("chips").innerHTML = SUGGESTIONS.map((s, i) =>
+  `<button class="chip" data-i="${i}">${esc(s)}</button>`).join("");
+$("chips").onclick = e => {
+  const i = e.target.dataset?.i;
+  if (i !== undefined) { $("prompt").value = SUGGESTIONS[i]; send(); }
+};
 
-function ask(text) { $("prompt").value = text; send(); }
-function newChat() { history = []; $("thread").innerHTML = ""; $("prompt").focus(); }
+function welcome() {
+  $("thread").innerHTML = `<div class="welcome">
+    <div class="big">🧠</div>
+    <h3>Everything runs on this machine</h3>
+    <p>Ask anything. Tool calls appear as they happen, each with the audit id that proves it ran.</p>
+  </div>`;
+}
+welcome();
+function newChat() { history = []; welcome(); $("prompt").focus(); }
 
 function bubble(cls, html) {
-  const div = document.createElement("div");
-  div.className = "msg " + cls;
-  div.innerHTML = html;
-  $("thread").appendChild(div);
-  div.scrollIntoView({ block: "end" });
-  return div;
+  if ($("thread").querySelector(".welcome")) $("thread").innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "msg " + cls;
+  wrap.innerHTML = `<div class="av">${cls === "user" ? "🧑" : "🧠"}</div>
+                    <div class="bubble ${cls === "bot" ? "streaming" : ""}">${html}</div>`;
+  $("thread").appendChild(wrap);
+  $("thread").scrollTop = $("thread").scrollHeight;
+  return wrap.querySelector(".bubble");
 }
 
 async function send() {
@@ -243,51 +689,50 @@ async function send() {
 
   bubble("user", esc(prompt));
   const events = document.createElement("div");
+  events.className = "events";
   $("thread").appendChild(events);
-  const bot = bubble("bot streaming", "");
+  const bot = bubble("bot", "");
   let reply = "";
 
-  const response = await fetch("/chat/stream", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, history }),
-  });
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop();
-    for (const part of parts) {
-      if (!part.startsWith("data: ")) continue;
-      const ev = JSON.parse(part.slice(6));
-      if (ev.type === "memories") {
-        events.insertAdjacentHTML("beforeend",
-          `<span class="toolev">🧠 paged in ${ev.memories.length} memory(ies)</span>`);
-      } else if (ev.type === "tool_start") {
-        events.insertAdjacentHTML("beforeend",
-          `<span class="toolev run" id="ev-${esc(ev.tool)}">⚙ ${esc(ev.tool)} — running…</span>`);
-      } else if (ev.type === "tool") {
-        const chip = document.getElementById("ev-" + ev.tool);
-        const ok = ev.status === "success";
-        const html = `${ok ? "⚙" : "⚠"} ${esc(ev.tool)} · audit ${esc(ev.audit_id || "-")}`;
-        if (chip) { chip.className = "toolev" + (ok ? "" : " err"); chip.innerHTML = html; chip.removeAttribute("id"); }
-        else events.insertAdjacentHTML("beforeend", `<span class="toolev${ok ? "" : " err"}">${html}</span>`);
-      } else if (ev.type === "token") {
-        reply += ev.text;
-        bot.textContent = reply;
-        bot.scrollIntoView({ block: "end" });
-      } else if (ev.type === "done") {
-        reply = ev.reply || reply;
-        bot.textContent = reply;
-      } else if (ev.type === "error") {
-        bot.innerHTML = `<span style="color:var(--crit)">Kernel error: ${esc(ev.error)}</span>`;
+  try {
+    const res = await fetch("/chat/stream", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, history }),
+    });
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split("\n\n"); buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith("data: ")) continue;
+        const ev = JSON.parse(part.slice(6));
+        if (ev.type === "memories") {
+          events.insertAdjacentHTML("beforeend",
+            `<span class="ev">🧠 ${ev.memories.length} memory(ies) paged in</span>`);
+        } else if (ev.type === "tool_start") {
+          events.insertAdjacentHTML("beforeend",
+            `<span class="ev run" id="ev-${esc(ev.tool)}">${esc(ev.tool)}</span>`);
+        } else if (ev.type === "tool") {
+          const chip = document.getElementById("ev-" + ev.tool);
+          const ok = ev.status === "success";
+          const html = `${ok ? "⚙" : "⚠"} ${esc(ev.tool)} · ${esc(ev.audit_id || "-")}`;
+          if (chip) { chip.className = "ev" + (ok ? "" : " err"); chip.innerHTML = html; chip.removeAttribute("id"); }
+          else events.insertAdjacentHTML("beforeend", `<span class="ev${ok ? "" : " err"}">${html}</span>`);
+        } else if (ev.type === "token") {
+          reply += ev.text; bot.textContent = reply;
+          $("thread").scrollTop = $("thread").scrollHeight;
+        } else if (ev.type === "done") {
+          reply = ev.reply || reply; bot.textContent = reply;
+        } else if (ev.type === "error") {
+          bot.innerHTML = `<span style="color:var(--crit)">Kernel error: ${esc(ev.error)}</span>`;
+        }
       }
     }
+  } catch (err) {
+    bot.innerHTML = `<span style="color:var(--crit)">Request failed: ${esc(err.message)}</span>`;
   }
   bot.classList.remove("streaming");
   history.push({ role: "user", content: prompt }, { role: "assistant", content: reply });
@@ -295,147 +740,9 @@ async function send() {
   busy = false; $("sendBtn").disabled = false; $("prompt").focus();
 }
 
-async function loadHeader() {
-  try {
-    const h = await api("/health");
-    const s = h.egress_sentinel || {};
-    const viol = (s.violations || []).length;
-    $("hdr").innerHTML =
-      `engine ${h.engine} · ${esc(h.active_model)} · sentinel ` +
-      `<span style="color:${viol ? "var(--crit)" : "var(--good)"}">${viol ? viol + " violations" : "clean"}</span>`;
-    return h;
-  } catch { $("hdr").textContent = "kernel unreachable"; return null; }
-}
-
-async function loadTrust() {
-  const [h, p] = await Promise.all([loadHeader(), api("/preflight").catch(() => null)]);
-  const s = (h && h.egress_sentinel) || {};
-  const viol = (s.violations || []).length;
-  const audit = await api("/audit?n=1").catch(() => ({}));
-  $("trustTiles").innerHTML = [
-    tile("Preflight", p ? (p.ok ? "✓ all pass" : "✗ blocked") : "n/a",
-         p && !p.ok ? "var(--crit)" : "var(--good)"),
-    tile("Egress sentinel", viol ? `✗ ${viol} violation(s)` : "✓ clean",
-         viol ? "var(--crit)" : "var(--good)", `${s.samples || 0} samples`),
-    tile("Audit chain", audit.chain_valid ? "✓ verified" : "✗ broken",
-         audit.chain_valid ? "var(--good)" : "var(--crit)"),
-    tile("Model pinning", h && h.model_pinning === "enforced" ? "✓ enforced" : "◦ unpinned",
-         h && h.model_pinning === "enforced" ? "var(--good)" : "var(--warn)"),
-    tile("Memory", h && h.memory && h.memory.enabled ? `${h.memory.records} records` : "disabled",
-         "var(--text)"),
-  ].join("");
-
-  $("checks").innerHTML = !p ? '<p class="muted">Preflight unavailable.</p>' :
-    p.checks.map(c => `
-      <div class="check" style="border-left-color:${COLOR[c.status]}">
-        <span style="color:${COLOR[c.status]};font-weight:700">${ICON[c.status]}</span>
-        <div>
-          <div class="name">${esc(c.name)}</div>
-          <div class="detail">${esc(c.detail)}</div>
-          ${c.status === "FAIL" && c.hint ? `<div class="fix">fix: ${esc(c.hint)}</div>` : ""}
-        </div>
-      </div>`).join("");
-
-  if (viol) {
-    $("checks").insertAdjacentHTML("afterbegin",
-      `<div class="check" style="border-left-color:var(--crit)">
-         <span style="color:var(--crit);font-weight:700">✗</span>
-         <div><div class="name">Egress violations recorded</div>
-         <div class="detail">${s.violations.map(v => esc(v.remote) + " (audit " + esc(v.audit_id) + ")").join(", ")}</div>
-         <div class="fix">The sentinel caught traffic leaving this machine — investigate before trusting this run.</div>
-         </div></div>`);
-  }
-}
-
-const tile = (label, value, color, sub) => `
-  <div class="tile"><div class="label">${label}</div>
-  <div class="value small" style="color:${color || "var(--text)"}">${value}</div>
-  ${sub ? `<div class="label">${sub}</div>` : ""}</div>`;
-
-async function loadAudit() {
-  const d = await api("/audit?n=100");
-  $("chainState").innerHTML = d.chain_valid
-    ? '<span class="pill" style="color:var(--good)">✓ hash chain verified</span>'
-    : '<span class="pill" style="color:var(--crit)">✗ CHAIN BROKEN</span>';
-  $("auditRows").innerHTML = d.records.slice().reverse().map(r => {
-    const detail = r.event === "tool_execution"
-      ? `${esc(r.status)} · ${esc(JSON.stringify(r.params || {}).slice(0, 70))}`
-      : esc((r.prompt || r.detail || r.remote || "").toString().slice(0, 70));
-    return `<tr>
-      <td class="mono">${esc((r.ts || "").replace("T", " ").slice(0, 19))}</td>
-      <td>${eventPill(r.event)}</td>
-      <td class="mono">${esc(r.tool || "—")}</td>
-      <td class="muted">${detail}</td>
-      <td class="mono muted">${esc((r.hash || "").slice(0, 10))}…</td>
-    </tr>`;
-  }).join("");
-}
-
-function eventPill(ev) {
-  const bad = ev === "egress_violation" || ev === "memory_error";
-  const color = bad ? "var(--crit)" : ev === "model_verification" ? "var(--accent)" : "var(--text-2)";
-  return `<span class="pill" style="color:${color}">${esc(ev)}</span>`;
-}
-
-async function loadMemory() {
-  const q = encodeURIComponent($("memq").value || "");
-  const d = await api(`/memory?q=${q}&limit=100`);
-  $("memCount").textContent = d.enabled ? `${d.count} records stored locally` : "memory disabled";
-  $("memRows").innerHTML = (d.records || []).map(m => `
-    <tr>
-      <td class="mono muted">${esc(m.ts)}</td>
-      <td><span class="pill">${esc(m.kind)}</span></td>
-      <td>${esc(m.text).slice(0, 240)}</td>
-      <td>${m.id ? `<button class="action danger" onclick="forget('${esc(m.id)}')">forget</button>` : ""}</td>
-    </tr>`).join("") || '<tr><td colspan="4" class="muted">No memories.</td></tr>';
-}
-
-async function forget(id) {
-  await fetch(`/memory/${id}`, { method: "DELETE" });
-  loadMemory();
-}
-async function forgetAll() {
-  if (!confirm("Erase every memory? This cannot be undone.")) return;
-  await fetch("/memory/all", { method: "DELETE" });
-  loadMemory();
-}
-
-async function loadTools() {
-  const [tools, stats] = await Promise.all([api("/tools"), api("/stats")]);
-  const byTool = Object.fromEntries(stats.tools.map(t => [t.tool, t]));
-  const max = Math.max(1, ...stats.tools.map(t => t.calls));
-  $("toolRows").innerHTML = tools.map(t => {
-    const s = byTool[t.name] || { calls: 0, failures: 0, avg_ms: null };
-    const mcp = t.source !== "builtin";
-    return `<tr>
-      <td class="mono">${esc(t.name)}</td>
-      <td><span class="pill" style="color:${mcp ? "var(--accent)" : "var(--text-2)"}">${esc(t.source)}</span></td>
-      <td>${s.calls}</td>
-      <td style="color:${s.failures ? "var(--warn)" : "var(--text-2)"}">${s.failures}</td>
-      <td class="muted">${s.avg_ms != null ? s.avg_ms + " ms" : "—"}</td>
-      <td><div class="bar" style="width:${Math.round((s.calls / max) * 100)}%"></div></td>
-    </tr>`;
-  }).join("");
-}
-
-async function loadModels() {
-  const d = await api("/models");
-  $("modelRows").innerHTML = d.models.map(m => {
-    const state = m.pinned ? ["✓ pinned", "var(--good)"]
-      : m.approved ? ["✗ DIGEST MISMATCH", "var(--crit)"]
-      : ["◦ not approved", "var(--warn)"];
-    const active = m.name.startsWith(d.active) ? ' <span class="pill" style="color:var(--accent)">active</span>' : "";
-    return `<tr>
-      <td class="mono">${esc(m.name)}${active}</td>
-      <td class="mono muted">${esc((m.digest || "").slice(0, 20))}…</td>
-      <td><span class="pill" style="color:${state[1]}">${state[0]}</span></td>
-    </tr>`;
-  }).join("");
-}
-
-loadHeader();
+loadStatus();
 $("prompt").focus();
-setInterval(loadHeader, 10000);
+setInterval(loadStatus, 10000);
 </script>
 </body>
 </html>

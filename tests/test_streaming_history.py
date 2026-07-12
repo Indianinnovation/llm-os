@@ -112,6 +112,17 @@ def test_history_is_bounded(audit, monkeypatch):
     assert contents[-1] == "now"
 
 
+def test_system_prompt_forbids_doing_followup_math_in_head():
+    """A follow-up like 'and divide that by 3' must still go through the
+    calculator. The model got this wrong (34,806 instead of 34,799) until
+    the prompt said so explicitly — arithmetic is never done in-head."""
+    from llm_os.kernel import SYSTEM_PROMPT
+
+    assert "follow-ups too" in SYSTEM_PROMPT
+    assert "call the calculator with the earlier result" in SYSTEM_PROMPT
+    assert "Never compute it in your head" in SYSTEM_PROMPT
+
+
 def test_memory_never_archives_the_assistants_own_reply(tmp_path, audit):
     """The feedback loop: storing model output as memory means a wrong
     answer is recalled later as fact. Memory records the USER only."""
