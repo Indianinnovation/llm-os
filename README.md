@@ -11,27 +11,40 @@ LLM OS is an implementation of [Andrej Karpathy's LLM OS idea](https://x.com/kar
 > **Built on LLM OS:** [**TelecomOS**](https://github.com/Indianinnovation/telecomos) — zero-egress network intelligence for 5G: root-cause analysis, alarm-storm correlation, and human-gated self-healing, all air-gapped. 19 MCP tools, a NOC dashboard, and a closed loop where the agent *proposes* but only an authorized human can *approve* — with the audit chain as the approval record. It's what a vertical built on this kernel looks like.
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│  UI / any client            HTTP (localhost only)                  │
-│      │                                                             │
-│      ▼                                                             │
-│  KERNEL (FastAPI)                          ┌────────────────────┐  │
-│   • routes intent via native tool-calling  │ PREFLIGHT GATE     │  │
-│   • validates all tool params (Pydantic)   │ telemetry off ·    │  │
-│   • hash-chained audit log of every action │ loopback-only ·    │  │
-│   • model digest pinning (refuses drift)   │ model pinned · …   │  │
-│   • egress sentinel (watchdog, 3s)         └────────────────────┘  │
-│      │                │                       │                    │
-│      ▼                ▼                       ▼                    │
-│  LLM ENGINE       BUILT-IN TOOLS          MCP SERVERS (stdio)      │
-│  (Ollama, frozen   • calculator            • system-info           │
-│   GGUF weights,      (AST whitelist)       • disk-inspector        │
-│   loopback only)   • markdown writer       • any Claude-Desktop-   │
-│                      (jailed dir)            format server         │
-│      │             • remember /                                    │
-│      ▼               search_memory                                 │
-│  EPISODIC MEMORY (local ChromaDB, MemGPT-style paging)             │
-└────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  SYSTEM CONSOLE / any client       HTTP + SSE (localhost only)       │
+│      │                                                              │
+│      ▼                                                              │
+│  KERNEL (FastAPI)                          ┌─────────────────────┐  │
+│   • routes intent via native tool-calling  │ PREFLIGHT GATE      │  │
+│   • validates all tool params (Pydantic)   │ 12 checks, blocks   │  │
+│   • hash-chained audit log of every action │ startup on failure: │  │
+│   • model digest pinning (refuses drift)   │ telemetry off ·     │  │
+│   • egress sentinel (watchdog, 3s)         │ loopback-only ·     │  │
+│      │                                     │ model pinned · …    │  │
+│      ▼                                     └─────────────────────┘  │
+│  ┌───────────────┐   a gated tool never runs until a human clicks   │
+│  │ APPROVAL GATE │   Approve — the model can propose, not execute   │
+│  └───────────────┘                                                  │
+│      │                │                       │                     │
+│      ▼                ▼                       ▼                     │
+│  LLM ENGINE       BUILT-IN TOOLS          MCP SERVERS (stdio)       │
+│  (Ollama, frozen   • calculator            • system-info            │
+│   GGUF weights,      (AST whitelist)       • disk-inspector         │
+│   loopback only)   • markdown writer       • any Claude-Desktop-    │
+│                      (jailed dir)            format server          │
+│      │             • remember / search_memory                       │
+│      │             • search_documents  ◄── DOCUMENT INDEX           │
+│      ▼                                     (your files, chunked +   │
+│  EPISODIC MEMORY                            embedded locally;       │
+│  (local ChromaDB,                           answers carry citations)│
+│   MemGPT-style paging)                                              │
+│                                                                     │
+│  SCHEDULER — runs saved prompts on a timer, through this same       │
+│  kernel: same audit chain, same approval gate. It cannot self-approve│
+│                                                                     │
+│  CONVERSATIONS — multi-turn history, persisted to disk, never sent  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## The System console — see every guarantee, live
@@ -473,11 +486,20 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-72 tests: sandbox-escape attempts against the expression evaluator,
+109 tests: sandbox-escape attempts against the expression evaluator,
 path-traversal attacks on the file tool, audit-chain tamper detection,
-model digest-pinning enforcement, egress-sentinel behavior, and
-telemetry-off regression guards — all with a mocked LLM, no engine
-needed.
+model digest-pinning enforcement, egress-sentinel behavior, approval-gate
+enforcement (a gated tool cannot execute without a human decision, and a
+scheduled run cannot approve itself), document-index and scheduler
+behavior, and telemetry-off regression guards — all with a mocked LLM, no
+engine needed.
+
+Two of those tests exist because of real bugs this project shipped and then
+caught: **two processes racing the same audit log** (a fast restart forked
+the hash chain — now serialized with `flock` + fsync, and the tests run two
+real processes and four threads against it), and **the inference engine
+phoning its vendor's cloud** (found by the egress sentinel, not by reading
+docs — preflight now refuses to start without `OLLAMA_NO_CLOUD=1`).
 
 ## Roadmap
 
