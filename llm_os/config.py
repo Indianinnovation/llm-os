@@ -47,6 +47,14 @@ APPROVAL_TOOLS = [
     if t.strip()
 ]
 
+# Retrieval grounding. A chunk scoring below this is not evidence: the
+# kernel drops it before the model ever sees it, and if NOTHING clears the
+# bar the kernel answers "not in your corpus" itself rather than letting
+# the model fall back on what it thinks it remembers. Measured: genuine
+# hits score 0.69–0.76; the case that produced a fabricated spec summary
+# scored 0.434.
+MIN_RELEVANCE = float(os.environ.get("LLM_OS_MIN_RELEVANCE", "0.5"))
+
 # MCP server definitions, Claude-Desktop-compatible {"mcpServers": {...}}.
 MCP_CONFIG = Path(os.environ.get("MCP_CONFIG", BASE_DIR / "mcp_servers.json"))
 

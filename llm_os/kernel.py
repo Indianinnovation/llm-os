@@ -70,6 +70,82 @@ def _produced_content(tool: str, params: dict) -> Optional[dict]:
     return None
 
 
+def retrieval_matches(result: Any) -> Optional[list]:
+    """The matches of a retrieval tool, or None if this isn't one.
+
+    Any tool — built-in or third-party MCP — that answers with
+    {"matches": [{"citation": …, "relevance": …}]} is making an
+    evidentiary claim, and the kernel holds it to one.
+    """
+    if not isinstance(result, dict):
+        return None
+    matches = result.get("matches")
+    if not isinstance(matches, list):
+        return None
+    if matches and not isinstance(matches[0], dict):
+        return None
+    if matches and "citation" not in matches[0]:
+        return None
+    return matches
+
+
+def filter_weak_matches(result: dict, matches: list) -> tuple:
+    """Drop chunks too weak to be evidence, BEFORE the model sees them.
+
+    This is not tidying. Asked to summarize TS 38.331, retrieval returned
+    a 0.434 chunk of boilerplate plus a chunk of a *different* spec — and
+    the model wrote a confident summary that mixed the two and cited
+    neither. A weak chunk is not a hint; it is an invitation to invent.
+    """
+    strong = [m for m in matches if m.get("relevance", 0) >= config.MIN_RELEVANCE]
+    filtered = {**result, "matches": strong}
+    if len(strong) < len(matches):
+        filtered["weak_matches_dropped"] = len(matches) - len(strong)
+    return filtered, strong
+
+
+def ungrounded_reply(trace: list) -> Optional[str]:
+    """The reply when retrieval found nothing solid.
+
+    The model must not be the one to decide whether it knows. Left alone
+    it says 'I was unable to find a direct summary… however, I can provide
+    a general overview' and then invents one — which, in a spec or a
+    contract, is the single most dangerous thing this system could do.
+    """
+    empty = [
+        t for t in (trace or [])
+        if t.get("retrieval") and not t.get("citations")
+    ]
+    if not empty or any(t.get("citations") for t in (trace or [])):
+        return None
+    tools = ", ".join(sorted({f"`{t['tool']}`" for t in empty}))
+    return (
+        "**I could not find that in your indexed material, so I am not going "
+        "to answer from memory.**\n\n"
+        f"Searched with {tools} — nothing scored above the relevance floor "
+        f"({config.MIN_RELEVANCE}). Anything I said next would be my own "
+        "recollection dressed up as a citation.\n\n"
+        "Add the source to your corpus and re-index, or ask me something the "
+        "corpus actually covers."
+    )
+
+
+def sources_block(trace: list) -> str:
+    """Citations, appended by the kernel rather than requested of the model.
+
+    A cited answer whose citation is optional is an uncited answer with
+    good manners.
+    """
+    citations = []
+    for call in trace or []:
+        for citation in call.get("citations") or []:
+            if citation not in citations:
+                citations.append(citation)
+    if not citations:
+        return ""
+    return "\n\n---\n**Sources**\n" + "\n".join(f"- {c}" for c in citations)
+
+
 def blocked_reply(trace: list) -> Optional[str]:
     """The reply to show when a tool is waiting on a human.
 
@@ -400,12 +476,12 @@ class Kernel:
 
             if not tool_calls:
                 reply = (_get(message, "content") or "").strip()
-                held = blocked_reply(trace)
+                # Something is waiting on a human, or retrieval came back
+                # empty. The model does not get to narrate either one: left to
+                # itself it prints the unsaved document, or invents the spec it
+                # could not find. Stream the kernel's statement of fact instead.
+                held = blocked_reply(trace) or ungrounded_reply(trace)
                 if held:
-                    # Something is waiting on a human. The model does not get
-                    # to narrate this — left to itself it prints the finished
-                    # document and the user believes it was saved. Stream the
-                    # kernel's own statement of fact instead.
                     reply = held
                     for piece in held.split(" "):
                         yield {"type": "token", "text": piece + " "}
@@ -633,6 +709,16 @@ class Kernel:
             except Exception as exc:  # tool bugs must not kill the kernel
                 result = {"error": f"Unexpected tool failure: {exc}"}
                 status = "tool_crash"
+
+        # Grounding gate. If this tool answered with evidence, weak chunks are
+        # removed here — before the result is handed back to the model — so it
+        # cannot build an answer on material that did not clear the bar.
+        retrieval = retrieval_matches(result)
+        citations: list = []
+        if retrieval is not None:
+            result, strong = filter_weak_matches(result, retrieval)
+            citations = [m["citation"] for m in strong if m.get("citation")]
+
         audit_id = self.audit.append(
             "tool_execution",
             {
@@ -650,6 +736,8 @@ class Kernel:
             "status": status,
             "result": result,
             "audit_id": audit_id,
+            "retrieval": retrieval is not None,
+            "citations": citations,
             "produced": _produced_content(name, args) if status == "success" else None,
         }
 
@@ -657,7 +745,13 @@ class Kernel:
         self, reply: str, trace: list, memories: list, started: float
     ) -> dict:
         return {
-            "reply": blocked_reply(trace) or reply,
+            # The kernel — not the model — has the last word on whether an
+            # action ran and whether an answer is grounded.
+            "reply": (
+                blocked_reply(trace)
+                or ungrounded_reply(trace)
+                or (reply + sources_block(trace))
+            ),
             "trace": trace,
             "memories": memories,
             "model": self.model,
