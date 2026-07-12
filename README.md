@@ -8,7 +8,7 @@
 
 LLM OS is an implementation of [Andrej Karpathy's LLM OS idea](https://x.com/karpathy/status/1723140519554105733) built for one uncompromising constraint: **zero egress**. A small local language model acts as the CPU — it only *routes intent*. Deterministic, sandboxed tools do the actual work, and every decision is written to a tamper-evident audit log.
 
-> **Built on LLM OS:** [TelecomOS](https://github.com/Indianinnovation/telecomos) — zero-egress root-cause analysis for 5G networks (air-gapped NOC demo inside).
+> **Built on LLM OS:** [**TelecomOS**](https://github.com/Indianinnovation/telecomos) — zero-egress network intelligence for 5G: root-cause analysis, alarm-storm correlation, and human-gated self-healing, all air-gapped. 19 MCP tools, a NOC dashboard, and a closed loop where the agent *proposes* but only an authorized human can *approve* — with the audit chain as the approval record. It's what a vertical built on this kernel looks like.
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
@@ -52,20 +52,38 @@ Requires [Ollama](https://ollama.com) with a tool-calling model:
 ollama pull llama3.2      # the routing model
 ollama pull all-minilm    # 46 MB embedding model for episodic memory
 
+# Run the engine hardened: loopback-only, vendor cloud features OFF
+# (Ollama ships OLLAMA_NO_CLOUD=false — see "Hardened native mode" below)
+OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 ollama serve
+
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 python scripts/launch.py
 ```
 
-The launcher is a **preflight gate**: it verifies every recommended
-privacy setting — no vendor update channel (desktop app not running),
-engine bound to loopback with zero external connections, UI and
-vector-store telemetry disabled, **model digests pinned**, valid MCP
-config, models present, disk headroom — and refuses to start until critical checks pass,
-printing the exact fix for each failure. `--check-only` audits without
-starting; `--docker` gates and launches the container sandbox;
-`--stop` shuts everything down. To start components by hand instead:
+The launcher is a **preflight gate** — 12 checks that must pass before
+anything starts: no vendor update channel (desktop app not running),
+engine bound to loopback with **cloud features disabled** and zero
+external connections, UI and vector-store telemetry off, **model digests
+pinned**, valid MCP config, models present, disk headroom. A failure
+blocks startup and prints the exact fix:
+
+```
+🔒 LLM OS preflight — recommended settings
+  ✓ No vendor update channel         bare ollama daemon (no desktop app)
+  ✓ Engine bound to loopback         127.0.0.1
+  ✓ Engine cloud features off        OLLAMA_NO_CLOUD=1
+  ✓ Model digest pinned              'llama3.2:latest' matches pinned digest a80c4f17…
+  ✓ Vector-store telemetry disabled  anonymized_telemetry=False
+  …
+  All critical checks passed.
+```
+
+`--check-only` audits without starting; `--approve-models` pins the
+digests of the models you trust; `--docker` gates and launches the
+container sandbox; `--stop` shuts everything down. To start components
+by hand instead:
 
 ```bash
 uvicorn llm_os.api:app --port 8000    # kernel
@@ -101,10 +119,10 @@ exhaustion. Both published ports bind to `127.0.0.1` only.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /chat` | Route a prompt; returns the reply plus the full tool trace |
-| `GET /health` | Kernel + engine status |
-| `GET /tools` | Registered tools |
-| `GET /audit?n=20` | Last N audit records + chain verification result |
+| `POST /chat` | Route a prompt; returns the reply, the full tool trace (with audit ids), and any memories paged in |
+| `GET /health` | Kernel + engine status, MCP servers, memory records, **model pinning**, **egress-sentinel violations** |
+| `GET /tools` | Registered tools, each labelled `builtin` or `mcp:<server>` |
+| `GET /audit?n=20` | Last N audit records + hash-chain verification result |
 
 ## Adding a tool
 
@@ -141,6 +159,12 @@ servers are bundled:
   space breakdowns, and content-hash duplicate detection — with hard
   caps on entries walked and bytes hashed, and forgiving path
   resolution ("download folder" → `~/Downloads`)
+
+A real third-party example, in its own repo with its own virtualenv:
+[TelecomOS](https://github.com/Indianinnovation/telecomos) registers 19
+tools (5G diagnostics, spec citations, human-gated remediation) and the
+kernel routes to them with no code changes here — that is the whole
+point of the MCP layer.
 
 It works in reverse too: `python -m llm_os.mcp_server` exposes the LLM
 OS built-in tools (sandboxed calculator, jailed markdown writer) to any
@@ -322,7 +346,8 @@ Results on this machine (2026-07-10, temperature 0):
 | MCP tools | 100% | 100% | 100% |
 | memory | 17% | 83% | 100% |
 | chat (no tool expected) | 50% | 0% | 75% |
-| **overall** | **68%** | **78%** | **95%** |
+| telecom (24 prompts, [TelecomOS](https://github.com/Indianinnovation/telecomos)) | — | 88% | **96%** |
+| **overall (core 40)** | **68%** | **78%** | **95%** |
 
 Routing quality scales with parameters, but not uniformly: the 1B
 model beats the 3B at knowing when *not* to call a tool, while being
@@ -357,6 +382,8 @@ needed.
 - [x] Airplane-mode verification script (scripted proof of zero egress)
 - [x] Routing accuracy eval harness across models/quantizations
 - [x] Untrusted-model containment: digest pinning + egress sentinel
+- [x] Preflight gate: recommended privacy settings enforced before startup
+- [x] First vertical built on the kernel: [TelecomOS](https://github.com/Indianinnovation/telecomos)
 - [ ] Swappable engine adapter (llama.cpp `llama-server`, vLLM) via OpenAI-compatible API
 - [ ] Desktop installer (Tauri)
 
