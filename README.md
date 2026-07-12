@@ -93,12 +93,16 @@ writing a line of code, and nothing is uploaded anywhere.
 
 ## Human approval gates — the model proposes, you authorize
 
-Any tool can be marked human-gated. The kernel then **refuses to run it**
-until a person approves — the gate is state the kernel checks, not an
-instruction in a prompt:
+Every tool that changes something is human-gated **out of the box**. The
+kernel **refuses to run it** until a person approves — the gate is state the
+kernel checks, not an instruction in a prompt, so no clever prompt can talk
+its way past it. A guarantee you have to remember to switch on is not a
+guarantee.
 
 ```bash
-LLM_OS_APPROVAL_TOOLS=write_markdown python scripts/launch.py
+python scripts/launch.py                      # write_markdown already gated
+LLM_OS_APPROVAL_TOOLS=write_markdown,send_email python scripts/launch.py   # add your own
+LLM_OS_APPROVAL_TOOLS="" python scripts/launch.py                          # open the gates, deliberately
 ```
 
 > **You:** Write a markdown note called quarterly-report…
