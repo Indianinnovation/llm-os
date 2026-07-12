@@ -34,6 +34,26 @@ LLM OS is an implementation of [Andrej Karpathy's LLM OS idea](https://x.com/kar
 └────────────────────────────────────────────────────────────────────┘
 ```
 
+## The System console — see every guarantee, live
+
+Most local-AI tools ask you to *trust* them. LLM OS ships the control
+plane that lets you **check**: open **http://localhost:8000/console**
+(served by the kernel itself — no extra process, no dependencies, works
+in the Docker sandbox).
+
+| Panel | What it answers |
+|---|---|
+| 🔒 **Trust** | Are all 12 privacy checks passing *right now*? Has the egress sentinel seen anything leave? Is the model digest still pinned? |
+| 🧾 **Audit** | Every routing decision and tool execution, hash-chain verified — searchable, and exportable as signed-in-order JSONL for an auditor |
+| 🧠 **Memory** | Everything the system remembers about you — searchable, and **erasable** (one record, or all of it) |
+| 🔧 **Tools** | Every tool the model may call, its source (`builtin` vs `mcp:<server>`), call counts, failures, and latency |
+| 📦 **Models** | Which weights are approved, which are pinned, which is active — and a loud red flag if any digest drifts |
+
+This is the surface a CTO, a compliance officer, or a security reviewer
+actually needs: not "we promise nothing leaves," but a page that says
+*nothing has left, here is the log, here is the proof, delete anything
+you want.*
+
 ## Why
 
 Regulated teams (legal, healthcare, finance) are blocked from cloud AI by

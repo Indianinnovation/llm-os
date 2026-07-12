@@ -94,6 +94,12 @@ with st.sidebar:
         st.markdown(f"- `{tool['name']}`{badge}")
     st.divider()
 
+    st.markdown(
+        f"[🔒 **System console**]({KERNEL_URL}/console) — trust posture, audit "
+        "chain, memory, tools, models"
+    )
+    st.divider()
+
     if st.button("➕ New chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()

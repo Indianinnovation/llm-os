@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM OS — System Console</title>
+<style>
+  :root {
+    --surface: #fcfcfb; --surface-2: #f4f4f2; --line: #e3e3df;
+    --text: #0b0b0b; --text-2: #52514e;
+    --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --accent: #2a78d6;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: #1a1a19; --surface-2: #232322; --line: #2e2e2c;
+      --text: #ffffff; --text-2: #c3c2b7;
+      --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --accent: #3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 18px 24px; border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  header .sub { color: var(--text-2); font-size: 13px; }
+  .spacer { flex: 1; }
+  nav { display: flex; gap: 4px; padding: 10px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  nav button {
+    background: none; border: 1px solid transparent; color: var(--text-2);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 14px;
+  }
+  nav button:hover { background: var(--surface-2); }
+  nav button[aria-selected="true"] {
+    background: var(--surface-2); border-color: var(--line); color: var(--text); font-weight: 600;
+  }
+  main { padding: 24px; max-width: 1180px; }
+  section { display: none; }
+  section.active { display: block; }
+  h2 { font-size: 15px; margin: 0 0 4px; }
+  .hint { color: var(--text-2); font-size: 13px; margin: 0 0 18px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .tile { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .tile .label { color: var(--text-2); font-size: 12px; }
+  .tile .value { font-size: 26px; font-weight: 650; margin-top: 4px; }
+  .tile .value.small { font-size: 17px; }
+  .check {
+    display: flex; gap: 12px; align-items: flex-start; padding: 11px 14px;
+    border: 1px solid var(--line); border-left-width: 4px; border-radius: 10px;
+    background: var(--surface-2); margin-bottom: 8px;
+  }
+  .check .name { font-weight: 600; min-width: 220px; }
+  .check .detail { color: var(--text-2); font-size: 13px; }
+  .check .fix { font-family: var(--mono); font-size: 12px; color: var(--crit); margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; color: var(--text-2); font-weight: 600; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:hover td { background: var(--surface-2); }
+  .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+  code, .mono { font-family: var(--mono); font-size: 12.5px; }
+  .pill { padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 650; border: 1px solid var(--line); white-space: nowrap; }
+  button.action {
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 14px; border-radius: 9px; cursor: pointer; font-size: 13px;
+  }
+  button.action:hover { border-color: var(--accent); }
+  button.danger:hover { border-color: var(--crit); color: var(--crit); }
+  input[type=search] {
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 12px; border-radius: 9px; font-size: 14px; min-width: 260px;
+  }
+  .row { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .muted { color: var(--text-2); }
+  .bar { height: 6px; border-radius: 3px; background: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧠 LLM OS — System Console</h1>
+  <span class="sub">the control plane for a private AI runtime</span>
+  <span class="spacer"></span>
+  <span id="hdr" class="sub mono"></span>
+</header>
+
+<nav id="nav">
+  <button data-view="trust" aria-selected="true">🔒 Trust</button>
+  <button data-view="audit" aria-selected="false">🧾 Audit</button>
+  <button data-view="memory" aria-selected="false">🧠 Memory</button>
+  <button data-view="tools" aria-selected="false">🔧 Tools</button>
+  <button data-view="models" aria-selected="false">📦 Models</button>
+</nav>
+
+<main>
+  <section id="trust" class="active">
+    <h2>Trust posture</h2>
+    <p class="hint">Live checks — the same gate the launcher enforces before startup.
+      A red check means the privacy guarantee is not currently held.</p>
+    <div class="tiles" id="trustTiles"></div>
+    <div id="checks"></div>
+  </section>
+
+  <section id="audit">
+    <h2>Audit chain</h2>
+    <p class="hint">Every routing decision and tool execution, hash-chained to the
+      previous record. Editing history breaks verification.</p>
+    <div class="row">
+      <button class="action" onclick="loadAudit()">↻ Refresh</button>
+      <a class="action" style="text-decoration:none" href="/audit/export">⬇ Export (.jsonl)</a>
+      <span id="chainState" class="mono"></span>
+    </div>
+    <div class="wrap"><table>
+      <thead><tr><th>Time</th><th>Event</th><th>Tool</th><th>Detail</th><th>Hash</th></tr></thead>
+      <tbody id="auditRows"></tbody>
+    </table></div>
+  </section>
+
+  <section id="memory">
+    <h2>Memory</h2>
+    <p class="hint">Everything the system remembers about you — searchable, and
+      erasable. Nothing here has ever left this machine.</p>
+    <div class="row">
+      <input type="search" id="memq" placeholder="Search memories…"
+             onkeydown="if(event.key==='Enter')loadMemory()">
+      <button class="action" onclick="loadMemory()">Search</button>
+      <button class="action danger" onclick="forgetAll()">🗑 Forget everything</button>
+      <span id="memCount" class="muted"></span>
+    </div>
+    <div class="wrap"><table>
+      <thead><tr><th>When</th><th>Kind</th><th>Memory</th><th></th></tr></thead>
+      <tbody id="memRows"></tbody>
+    </table></div>
+  </section>
+
+  <section id="tools">
+    <h2>Tools</h2>
+    <p class="hint">Everything the model is allowed to call — built-ins and MCP
+      servers — with usage measured from the audit log.</p>
+    <div class="wrap"><table>
+      <thead><tr><th>Tool</th><th>Source</th><th>Calls</th><th>Failures</th><th>Avg latency</th><th>Usage</th></tr></thead>
+      <tbody id="toolRows"></tbody>
+    </table></div>
+  </section>
+
+  <section id="models">
+    <h2>Models</h2>
+    <p class="hint">The kernel refuses to serve a model whose content digest does
+      not match its pin. Approve models deliberately:
+      <code>python scripts/launch.py --approve-models</code></p>
+    <div class="wrap"><table>
+      <thead><tr><th>Model</th><th>Digest</th><th>Status</th></tr></thead>
+      <tbody id="modelRows"></tbody>
+    </table></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+const COLOR = { PASS: "var(--good)", WARN: "var(--warn)", FAIL: "var(--crit)" };
+const ICON  = { PASS: "✓", WARN: "◦", FAIL: "✗" };
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#nav button").forEach(x => x.setAttribute("aria-selected", x === b));
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === b.dataset.view));
+  ({ trust: loadTrust, audit: loadAudit, memory: loadMemory, tools: loadTools, models: loadModels })[b.dataset.view]();
+});
+
+async function loadHeader() {
+  try {
+    const h = await api("/health");
+    const s = h.egress_sentinel || {};
+    const viol = (s.violations || []).length;
+    $("hdr").innerHTML =
+      `engine ${h.engine} · ${esc(h.active_model)} · sentinel ` +
+      `<span style="color:${viol ? "var(--crit)" : "var(--good)"}">${viol ? viol + " violations" : "clean"}</span>`;
+    return h;
+  } catch { $("hdr").textContent = "kernel unreachable"; return null; }
+}
+
+async function loadTrust() {
+  const [h, p] = await Promise.all([loadHeader(), api("/preflight").catch(() => null)]);
+  const s = (h && h.egress_sentinel) || {};
+  const viol = (s.violations || []).length;
+  const audit = await api("/audit?n=1").catch(() => ({}));
+  $("trustTiles").innerHTML = [
+    tile("Preflight", p ? (p.ok ? "✓ all pass" : "✗ blocked") : "n/a",
+         p && !p.ok ? "var(--crit)" : "var(--good)"),
+    tile("Egress sentinel", viol ? `✗ ${viol} violation(s)` : "✓ clean",
+         viol ? "var(--crit)" : "var(--good)", `${s.samples || 0} samples`),
+    tile("Audit chain", audit.chain_valid ? "✓ verified" : "✗ broken",
+         audit.chain_valid ? "var(--good)" : "var(--crit)"),
+    tile("Model pinning", h && h.model_pinning === "enforced" ? "✓ enforced" : "◦ unpinned",
+         h && h.model_pinning === "enforced" ? "var(--good)" : "var(--warn)"),
+    tile("Memory", h && h.memory && h.memory.enabled ? `${h.memory.records} records` : "disabled",
+         "var(--text)"),
+  ].join("");
+
+  $("checks").innerHTML = !p ? '<p class="muted">Preflight unavailable.</p>' :
+    p.checks.map(c => `
+      <div class="check" style="border-left-color:${COLOR[c.status]}">
+        <span style="color:${COLOR[c.status]};font-weight:700">${ICON[c.status]}</span>
+        <div>
+          <div class="name">${esc(c.name)}</div>
+          <div class="detail">${esc(c.detail)}</div>
+          ${c.status === "FAIL" && c.hint ? `<div class="fix">fix: ${esc(c.hint)}</div>` : ""}
+        </div>
+      </div>`).join("");
+
+  if (viol) {
+    $("checks").insertAdjacentHTML("afterbegin",
+      `<div class="check" style="border-left-color:var(--crit)">
+         <span style="color:var(--crit);font-weight:700">✗</span>
+         <div><div class="name">Egress violations recorded</div>
+         <div class="detail">${s.violations.map(v => esc(v.remote) + " (audit " + esc(v.audit_id) + ")").join(", ")}</div>
+         <div class="fix">The sentinel caught traffic leaving this machine — investigate before trusting this run.</div>
+         </div></div>`);
+  }
+}
+
+const tile = (label, value, color, sub) => `
+  <div class="tile"><div class="label">${label}</div>
+  <div class="value small" style="color:${color || "var(--text)"}">${value}</div>
+  ${sub ? `<div class="label">${sub}</div>` : ""}</div>`;
+
+async function loadAudit() {
+  const d = await api("/audit?n=100");
+  $("chainState").innerHTML = d.chain_valid
+    ? '<span class="pill" style="color:var(--good)">✓ hash chain verified</span>'
+    : '<span class="pill" style="color:var(--crit)">✗ CHAIN BROKEN</span>';
+  $("auditRows").innerHTML = d.records.slice().reverse().map(r => {
+    const detail = r.event === "tool_execution"
+      ? `${esc(r.status)} · ${esc(JSON.stringify(r.params || {}).slice(0, 70))}`
+      : esc((r.prompt || r.detail || r.remote || "").toString().slice(0, 70));
+    return `<tr>
+      <td class="mono">${esc((r.ts || "").replace("T", " ").slice(0, 19))}</td>
+      <td>${eventPill(r.event)}</td>
+      <td class="mono">${esc(r.tool || "—")}</td>
+      <td class="muted">${detail}</td>
+      <td class="mono muted">${esc((r.hash || "").slice(0, 10))}…</td>
+    </tr>`;
+  }).join("");
+}
+
+function eventPill(ev) {
+  const bad = ev === "egress_violation" || ev === "memory_error";
+  const color = bad ? "var(--crit)" : ev === "model_verification" ? "var(--accent)" : "var(--text-2)";
+  return `<span class="pill" style="color:${color}">${esc(ev)}</span>`;
+}
+
+async function loadMemory() {
+  const q = encodeURIComponent($("memq").value || "");
+  const d = await api(`/memory?q=${q}&limit=100`);
+  $("memCount").textContent = d.enabled ? `${d.count} records stored locally` : "memory disabled";
+  $("memRows").innerHTML = (d.records || []).map(m => `
+    <tr>
+      <td class="mono muted">${esc(m.ts)}</td>
+      <td><span class="pill">${esc(m.kind)}</span></td>
+      <td>${esc(m.text).slice(0, 240)}</td>
+      <td>${m.id ? `<button class="action danger" onclick="forget('${esc(m.id)}')">forget</button>` : ""}</td>
+    </tr>`).join("") || '<tr><td colspan="4" class="muted">No memories.</td></tr>';
+}
+
+async function forget(id) {
+  await fetch(`/memory/${id}`, { method: "DELETE" });
+  loadMemory();
+}
+async function forgetAll() {
+  if (!confirm("Erase every memory? This cannot be undone.")) return;
+  await fetch("/memory/all", { method: "DELETE" });
+  loadMemory();
+}
+
+async function loadTools() {
+  const [tools, stats] = await Promise.all([api("/tools"), api("/stats")]);
+  const byTool = Object.fromEntries(stats.tools.map(t => [t.tool, t]));
+  const max = Math.max(1, ...stats.tools.map(t => t.calls));
+  $("toolRows").innerHTML = tools.map(t => {
+    const s = byTool[t.name] || { calls: 0, failures: 0, avg_ms: null };
+    const mcp = t.source !== "builtin";
+    return `<tr>
+      <td class="mono">${esc(t.name)}</td>
+      <td><span class="pill" style="color:${mcp ? "var(--accent)" : "var(--text-2)"}">${esc(t.source)}</span></td>
+      <td>${s.calls}</td>
+      <td style="color:${s.failures ? "var(--warn)" : "var(--text-2)"}">${s.failures}</td>
+      <td class="muted">${s.avg_ms != null ? s.avg_ms + " ms" : "—"}</td>
+      <td><div class="bar" style="width:${Math.round((s.calls / max) * 100)}%"></div></td>
+    </tr>`;
+  }).join("");
+}
+
+async function loadModels() {
+  const d = await api("/models");
+  $("modelRows").innerHTML = d.models.map(m => {
+    const state = m.pinned ? ["✓ pinned", "var(--good)"]
+      : m.approved ? ["✗ DIGEST MISMATCH", "var(--crit)"]
+      : ["◦ not approved", "var(--warn)"];
+    const active = m.name.startsWith(d.active) ? ' <span class="pill" style="color:var(--accent)">active</span>' : "";
+    return `<tr>
+      <td class="mono">${esc(m.name)}${active}</td>
+      <td class="mono muted">${esc((m.digest || "").slice(0, 20))}…</td>
+      <td><span class="pill" style="color:${state[1]}">${state[0]}</span></td>
+    </tr>`;
+  }).join("");
+}
+
+loadTrust();
+setInterval(loadHeader, 10000);
+</script>
+</body>
+</html>

@@ -109,6 +109,46 @@ class EpisodicMemory:
     def count(self) -> int:
         return self._collection.count()
 
+    def list_records(self, query: str = "", limit: int = 50) -> List[dict]:
+        """Browse memory. With a query, semantic search; without, most recent."""
+        if self.count() == 0:
+            return []
+        if query:
+            found = self.recall(query, k=limit, max_distance=1.0)
+            return found
+        result = self._collection.get(
+            limit=limit, include=["documents", "metadatas"]
+        )
+        records = [
+            {
+                "id": record_id,
+                "text": text,
+                "kind": (meta or {}).get("kind", "episode"),
+                "ts": (meta or {}).get("ts", ""),
+            }
+            for record_id, text, meta in zip(
+                result["ids"], result["documents"], result["metadatas"]
+            )
+        ]
+        records.sort(key=lambda r: r["ts"], reverse=True)
+        return records
+
+    def forget(self, record_id: str) -> bool:
+        """Delete one memory. The privacy promise, made operable."""
+        existing = self._collection.get(ids=[record_id])
+        if not existing["ids"]:
+            return False
+        self._collection.delete(ids=[record_id])
+        return True
+
+    def forget_all(self) -> int:
+        """Erase every memory."""
+        total = self.count()
+        if total:
+            all_ids = self._collection.get(include=[])["ids"]
+            self._collection.delete(ids=all_ids)
+        return total
+
 
 def create_memory(
     persist_dir: Path, ollama_host: str, embed_model: str

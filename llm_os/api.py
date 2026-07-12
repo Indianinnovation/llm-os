@@ -1,8 +1,13 @@
 """FastAPI service exposing the kernel. Every client (UI, CLI, future
 desktop app) goes through this single routed entry point."""
 
+import collections
+import time
+from pathlib import Path
+
 import requests
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from . import config, modeltrust
@@ -118,3 +123,127 @@ def tools() -> list:
 def audit(n: int = 20) -> dict:
     log = _kernel.audit if _kernel else AuditLog(config.AUDIT_DIR)
     return {"chain_valid": log.verify_chain(), "records": log.tail(n)}
+
+
+# ── System console: the control plane ────────────────────────────────────────
+
+CONSOLE_HTML = Path(__file__).parent / "console" / "index.html"
+
+
+@app.get("/console", include_in_schema=False)
+def console() -> FileResponse:
+    """The System console — trust, audit, memory, tools, models."""
+    return FileResponse(CONSOLE_HTML, media_type="text/html")
+
+
+@app.get("/preflight")
+def preflight() -> dict:
+    """Live privacy/runtime posture — the same gate the launcher enforces."""
+    from .preflight import run_preflight
+
+    report = run_preflight("native")
+    return {
+        "ok": report.ok,
+        "checks": [
+            {"name": c.name, "status": c.status, "detail": c.detail, "hint": c.hint}
+            for c in report.checks
+        ],
+    }
+
+
+@app.get("/audit/export", include_in_schema=False)
+def audit_export() -> PlainTextResponse:
+    """Download the raw hash-chained log — verifiable offline by an auditor."""
+    log = _kernel.audit if _kernel else AuditLog(config.AUDIT_DIR)
+    content = log.path.read_text() if log.path.exists() else ""
+    return PlainTextResponse(
+        content,
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="llm-os-audit-'
+                f'{time.strftime("%Y%m%d")}.jsonl"'
+            )
+        },
+    )
+
+
+@app.get("/stats")
+def stats() -> dict:
+    """Per-tool call counts and latency, derived from the audit log."""
+    log = _kernel.audit if _kernel else AuditLog(config.AUDIT_DIR)
+    counts = collections.Counter()
+    durations = collections.defaultdict(list)
+    failures = collections.Counter()
+    for record in log.tail(1000):
+        if record.get("event") != "tool_execution":
+            continue
+        tool = record.get("tool", "?")
+        counts[tool] += 1
+        if record.get("status") != "success":
+            failures[tool] += 1
+        if isinstance(record.get("duration_ms"), (int, float)):
+            durations[tool].append(record["duration_ms"])
+    return {
+        "tools": [
+            {
+                "tool": tool,
+                "calls": count,
+                "failures": failures[tool],
+                "avg_ms": round(sum(durations[tool]) / len(durations[tool]), 1)
+                if durations[tool]
+                else None,
+            }
+            for tool, count in counts.most_common()
+        ]
+    }
+
+
+@app.get("/models")
+def models() -> dict:
+    """Engine models with their pinning status."""
+    try:
+        engine_models = modeltrust.engine_models()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Engine unreachable: {exc}")
+    manifest = modeltrust.load_manifest()
+    return {
+        "active": config.MODEL_NAME,
+        "pinning": "enforced" if manifest is not None else "unpinned",
+        "models": [
+            {
+                "name": m["name"],
+                "digest": m["digest"],
+                "pinned": manifest is not None and manifest.get(m["name"]) == m["digest"],
+                "approved": manifest is not None and m["name"] in manifest,
+            }
+            for m in engine_models
+        ],
+    }
+
+
+@app.get("/memory")
+def memory_list(q: str = "", limit: int = 50) -> dict:
+    """Browse or search everything the system remembers."""
+    if _kernel is None or _kernel.memory is None:
+        return {"enabled": False, "records": []}
+    return {
+        "enabled": True,
+        "count": _kernel.memory.count(),
+        "records": _kernel.memory.list_records(q, limit),
+    }
+
+
+@app.delete("/memory/{record_id}")
+def memory_forget(record_id: str) -> dict:
+    """Forget one memory."""
+    if _kernel is None or _kernel.memory is None:
+        raise HTTPException(status_code=400, detail="Memory is disabled.")
+    if record_id == "all":
+        removed = _kernel.memory.forget_all()
+        _kernel.audit.append("memory_forget", {"scope": "all", "removed": removed})
+        return {"forgotten": removed}
+    if not _kernel.memory.forget(record_id):
+        raise HTTPException(status_code=404, detail="No such memory.")
+    _kernel.audit.append("memory_forget", {"scope": "one", "id": record_id})
+    return {"forgotten": 1}

@@ -6,6 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY llm_os/ llm_os/
+
 COPY ui/ ui/
 COPY examples/ examples/
 COPY mcp_servers.json .
