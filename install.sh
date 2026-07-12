@@ -6,7 +6,7 @@
 #
 # Does: check Python + Ollama · start the engine HARDENED (loopback,
 # cloud features off) · pull the models · build the venv · install deps ·
-# pin the model digests · run preflight · launch.
+# pin the model digests · pin the MCP servers · run preflight · launch.
 
 set -e
 cd "$(dirname "$0")"
@@ -76,6 +76,7 @@ ok "venv ready ($(.venv/bin/python -m pip list 2>/dev/null | wc -l | tr -d ' ') 
 
 step "5/6 Pin the models you trust"
 .venv/bin/python scripts/launch.py --approve-models | sed 's/^/  /'
+.venv/bin/python scripts/launch.py --approve-mcp   | sed 's/^/  /'
 
 step "6/6 Preflight"
 if [ "$1" = "--no-run" ]; then

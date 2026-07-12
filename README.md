@@ -376,6 +376,38 @@ connections even with the radio off and will fool naive probes; ours
 learned that the hard way. A markdown report is written to
 `scratchpad/airplane_report.md`.
 
+## Prove the log: the standalone auditor
+
+The audit chain is only worth something if someone other than the kernel can
+check it. So the verifier imports nothing from `llm_os`, needs no
+dependencies, and runs on a machine that has never seen this project — an
+auditor should never have to ask the thing being audited whether it is honest.
+
+```bash
+python scripts/verify_audit.py audit/audit.jsonl
+
+# 🔗 Verifying audit/audit.jsonl
+#    313 records · SHA-256 hash chain
+#   ✓ CHAIN INTACT — all 313 records verify.
+#   final hash cc8e688a2b4b7d7dbd0b9c2eb1c0eaba4defbccf14aa6e24a2f25ef69fb72d1a
+```
+
+Try to rewrite history and it says so, with the record number:
+
+```bash
+# forge who approved a remediation, then re-verify:
+✗ record 21: CONTENT TAMPERED
+  Record 21 (tool_executed_after_approval) was modified after it was written.
+
+# delete an inconvenient line:
+✗ record 151: BROKEN CHAIN
+  A record was edited, deleted, or inserted here.
+```
+
+Recomputing the forged record's own hash does not save you: the *next* record
+already committed to the old one, so the seam still shows. Exit code 0 =
+intact, 1 = broken — so it drops straight into CI or a compliance job.
+
 ## Your data: verifiable guarantees
 
 Cloud providers offer a *policy* ("we don't train on your data") that
