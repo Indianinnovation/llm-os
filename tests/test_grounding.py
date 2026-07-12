@@ -236,3 +236,48 @@ def test_needs_unaided_answer_only_when_search_ran_and_failed():
     assert not needs_unaided_answer([{"retrieval": True, "citations": []}], "summarize TS 38.331")
     # No search at all — nothing to recover from.
     assert not needs_unaided_answer([{"retrieval": False}], "what is 5g")
+
+
+# ── kernel-authored text must never re-enter the model's mouth ──────────────
+
+from llm_os.kernel import UNAIDED_NOTE, strip_kernel_notes  # noqa: E402
+
+
+def test_strip_kernel_notes_removes_banner_and_sources():
+    text = UNAIDED_NOTE + "5G is the fifth generation.\n\n---\n**Sources**\n- TS 38.331 § 5.3\n"
+    assert strip_kernel_notes(text) == "5G is the fifth generation."
+
+
+def test_the_banner_is_never_printed_twice(tmp_path):
+    """The model, shown a past assistant turn that begins with the kernel's
+    banner, imitates it — and the kernel then prepends its own, so the user
+    reads the disclaimer twice."""
+    kernel = _kernel(
+        tmp_path,
+        _search_tool({"query": "llm os", "matches": [WEAK]}),
+        [
+            tool_call_response("search_specs", {"query": "llm os"}),
+            text_response(""),
+            # The model parrots the banner it saw in the replayed history.
+            text_response(UNAIDED_NOTE + "LLM OS is a private, local-first kernel."),
+        ],
+    )
+    outcome = kernel.handle("What is LLM OS ?")
+    assert outcome["reply"].count("Answered from the model's own knowledge") == 1
+    assert "local-first kernel" in outcome["reply"]
+
+
+def test_history_replay_hides_kernel_annotations_from_the_model(tmp_path):
+    kernel = _kernel(
+        tmp_path,
+        _search_tool({"query": "x", "matches": [STRONG]}),
+        [tool_call_response("search_specs", {"query": "x"}), text_response("Fine.")],
+    )
+    history = [
+        {"role": "user", "content": "what is 5g?"},
+        {"role": "assistant", "content": UNAIDED_NOTE + "5G is a mobile standard."},
+    ]
+    messages, _ = kernel._build_messages("and RRC?", history)
+    replayed = [m["content"] for m in messages if m["role"] == "assistant"]
+    assert replayed == ["5G is a mobile standard."]
+    assert not any("Answered from the model's own knowledge" in c for c in replayed)

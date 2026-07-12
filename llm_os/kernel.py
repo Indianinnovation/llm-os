@@ -171,6 +171,22 @@ UNAIDED_NOTE = (
     "documents, and it carries no citation.*\n\n"
 )
 
+# Everything the kernel adds to a reply: the ungrounded banner and the Sources
+# block. These are the kernel speaking ABOUT the model, not the model speaking.
+# Replayed into the next turn as though the assistant had written them, the
+# model imitates the pattern and stamps the banner on its own output — so the
+# user sees it twice. Strip them at both boundaries: before text re-enters the
+# context, and before the kernel prepends the banner itself.
+_KERNEL_NOTE_RE = re.compile(
+    r"\*Answered from the model's own knowledge[^\n]*\*\s*"
+    r"|\n*---\n\*\*Sources\*\*\n(?:- .*\n?)*",
+)
+
+
+def strip_kernel_notes(text: str) -> str:
+    """Remove kernel-authored annotations from a reply."""
+    return _KERNEL_NOTE_RE.sub("", text or "").strip()
+
 
 def sources_block(trace: list) -> str:
     """Citations, appended by the kernel rather than requested of the model.
@@ -374,8 +390,14 @@ class Kernel:
         `history` is the client's recent conversation ([{role, content}, …]);
         the last MAX_HISTORY_TURNS exchanges are included so follow-ups like
         "and cell 5?" or "summarize that" work. Only text is replayed — never
-        past tool payloads, which would bloat context for a small model.
+        past tool payloads, which would bloat context for a small model, and
+        never the kernel's own annotations, which the model would imitate.
         """
+        history = [
+            {**turn, "content": strip_kernel_notes(turn.get("content", ""))}
+            if turn.get("role") == "assistant" else turn
+            for turn in (history or [])
+        ]
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
         memories = self._page_in_memories(prompt)
@@ -436,7 +458,7 @@ class Kernel:
                     # The router sent a general question into a search tool and
                     # it found nothing. The tool was the mistake — the question
                     # still deserves an answer.
-                    unaided = self._answer_unaided(prompt, history)
+                    unaided = strip_kernel_notes(self._answer_unaided(prompt, history))
                     if unaided:
                         reply = UNAIDED_NOTE + unaided
                         self.audit.append(
@@ -539,7 +561,7 @@ class Kernel:
                     for piece in held.split(" "):
                         yield {"type": "token", "text": piece + " "}
                 elif needs_unaided_answer(trace, prompt):
-                    unaided = self._answer_unaided(prompt, history)
+                    unaided = strip_kernel_notes(self._answer_unaided(prompt, history))
                     reply = (UNAIDED_NOTE + unaided) if unaided else reply
                     for piece in reply.split(" "):
                         yield {"type": "token", "text": piece + " "}
