@@ -52,6 +52,22 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
+def _produced_content(tool: str, params: dict) -> Optional[dict]:
+    """The artifact a tool created, in a form worth showing the user.
+
+    A file write is not really answered by '{"bytes": 690}' — the user
+    wants to read what was written. Any tool whose parameters carry a
+    body of text ('content', 'body', 'text', 'message') is shown.
+    """
+    params = params or {}
+    for key in ("content", "body", "text", "message"):
+        body = params.get(key)
+        if isinstance(body, str) and body.strip():
+            title = params.get("title") or params.get("subject") or ""
+            return {"title": title, "body": body, "tool": tool}
+    return None
+
+
 def _as_tool_call(data: Any) -> Optional[dict]:
     if not isinstance(data, dict) or not isinstance(data.get("name"), str):
         return None
@@ -400,6 +416,9 @@ class Kernel:
             "executed": True,
             "approval_id": approval_id,
             "summary": self.summarize_tool_result(record["prompt"], outcome),
+            # What was actually written/sent, so the user can SEE the work —
+            # not just a byte count.
+            "produced": _produced_content(record["tool"], record["params"]),
             **outcome,
         }
 
@@ -493,6 +512,7 @@ class Kernel:
             "status": status,
             "result": result,
             "audit_id": audit_id,
+            "produced": _produced_content(name, args) if status == "success" else None,
         }
 
     def _result(

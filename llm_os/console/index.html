@@ -235,6 +235,16 @@
     padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 6px 0;
   }
   .msg.user .bubble code.inline, .msg.user .bubble pre.code { background: rgba(255,255,255,.18); }
+  .artifact {
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    margin-top: 10px; background: var(--surface);
+  }
+  .artifact-head {
+    padding: 7px 12px; font-size: 12px; font-weight: 650; color: var(--text-2);
+    background: var(--surface-3); border-bottom: 1px solid var(--line);
+  }
+  .artifact-body { padding: 10px 14px; font-size: 13.5px; }
+  .artifact-body p:first-child, .artifact-body h3:first-child { margin-top: 0; }
   .bubble.streaming::after {
     content: "▌"; animation: b 1s step-end infinite; margin-left: 1px; opacity: .7;
   }
@@ -784,6 +794,20 @@ async function reindex() {
   loadDocs();
 }
 
+/* Show what a tool actually PRODUCED — the document, not a byte count. */
+function artifact(produced, result) {
+  const meta = result
+    ? `<div class="dim" style="font-size:11.5px;margin-top:6px">${
+        esc(Object.entries(result).map(([k, v]) => `${k}: ${v}`).join(" · "))}</div>`
+    : "";
+  if (!produced) return meta;
+  return `
+    <div class="artifact">
+      <div class="artifact-head">📄 ${esc(produced.title || produced.tool)}</div>
+      <div class="artifact-body">${md(produced.body)}</div>
+    </div>${meta}`;
+}
+
 /* ── scheduled agents (#7) ─────────────────────────────────────────────── */
 async function loadJobs() {
   const d = await api("/schedules");
@@ -876,12 +900,8 @@ async function decide(id, decision) {
                       <span class="ev">✅ approved by you</span>`;
   $("thread").appendChild(events);
 
-  const body = d.summary
-    ? md(d.summary)
-    : md(`Done — \`${esc(d.tool)}\` ran.`);
-  const detail = d.result
-    ? `<pre class="code">${esc(JSON.stringify(d.result, null, 2))}</pre>` : "";
-  const b = bubble("bot", body + detail);
+  const body = d.summary ? md(d.summary) : md(`Done — \`${esc(d.tool)}\` ran.`);
+  const b = bubble("bot", body + artifact(d.produced, d.result));
   b.classList.remove("streaming");
   history.push({ role: "assistant", content: d.summary || "Approved and executed." });
   $("thread").scrollTop = $("thread").scrollHeight;
@@ -980,7 +1000,7 @@ async function send() {
   events.className = "events";
   $("thread").appendChild(events);
   const bot = bubble("bot", "");
-  let reply = "";
+  let reply = "", produced = null;
 
   if (!conversationId) {
     const c = await api("/conversations", { method: "POST" });
@@ -1019,13 +1039,16 @@ async function send() {
             : `${ok ? "⚙" : "⚠"} ${esc(ev.tool)} · ${esc(ev.audit_id || "-")}`;
           if (chip) { chip.className = cls; chip.innerHTML = html; chip.removeAttribute("id"); }
           else events.insertAdjacentHTML("beforeend", `<span class="${cls}">${html}</span>`);
+        } else if (ev.type === "tool" && ev.produced) {
+          produced = ev.produced;
         } else if (ev.type === "token") {
           reply += ev.text;
           bot.classList.add("raw"); bot.textContent = reply;   // raw while streaming
           $("thread").scrollTop = $("thread").scrollHeight;
         } else if (ev.type === "done") {
           reply = ev.reply || reply;
-          bot.classList.remove("raw"); bot.innerHTML = md(reply);   // formatted when done
+          bot.classList.remove("raw");
+          bot.innerHTML = md(reply) + (produced ? artifact(produced, null) : "");
         } else if (ev.type === "error") {
           bot.innerHTML = `<span style="color:var(--crit)">Kernel error: ${esc(ev.error)}</span>`;
         }
