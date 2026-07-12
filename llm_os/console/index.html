@@ -101,11 +101,36 @@
   }
   nav button .ico { width: 18px; text-align: center; font-size: 14px; flex: none; }
   nav .dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  nav .kbd {
+    margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--text-3);
+    border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px;
+  }
+  @media (max-width: 860px) { nav .kbd { display: none; } }
 
   .sidefoot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
   .statline { display: flex; align-items: center; gap: 7px; padding: 4px 8px;
               font-size: 11.5px; color: var(--text-3); }
   .statline b { color: var(--text-2); font-weight: 600; font-family: var(--mono); font-size: 11px; }
+
+  /* ── protection bar ────────────────────────────────────────────────────── */
+  .shield {
+    display: flex; align-items: center; gap: 13px; padding: 10px 28px;
+    border-bottom: 1px solid var(--line); background: var(--good-sub);
+    position: sticky; top: 0; z-index: 6;
+  }
+  .shield.bad { background: var(--crit-sub); }
+  .shield.checking { background: var(--surface-2); }
+  .shieldmark { font-size: 19px; line-height: 1; }
+  .shieldtext { display: flex; flex-direction: column; line-height: 1.35; }
+  .shieldtext b { font-size: 13.5px; }
+  .shieldtext span { font-size: 12px; }
+  .shieldstats { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+  .shieldstat {
+    display: flex; align-items: center; gap: 6px; font-size: 11.5px;
+    color: var(--text-2); font-family: var(--mono);
+  }
+  .shieldstat .d { width: 7px; height: 7px; border-radius: 50%; }
+  @media (max-width: 900px) { .shieldstats { display: none; } }
 
   /* ── main ──────────────────────────────────────────────────────────────── */
   main { overflow-y: auto; }
@@ -293,8 +318,8 @@
   </div>
 
   <nav id="nav">
-    <button data-view="chat" aria-selected="true"><span class="ico">💬</span><span class="navlabel">Chat</span></button>
-    <button data-view="trust" aria-selected="false"><span class="ico">🔒</span><span class="navlabel">Trust</span><span class="dot" id="trustDot"></span></button>
+    <button data-view="chat" aria-selected="true" title="⌘1"><span class="ico">💬</span><span class="navlabel">Chat</span><kbd class="kbd">⌘1</kbd></button>
+    <button data-view="trust" aria-selected="false" title="⌘2"><span class="ico">🔒</span><span class="navlabel">Trust</span><span class="dot" id="trustDot"></span></button>
     <button data-view="audit" aria-selected="false"><span class="ico">🧾</span><span class="navlabel">Audit</span></button>
     <button data-view="docs" aria-selected="false"><span class="ico">📄</span><span class="navlabel">Documents</span></button>
     <button data-view="jobs" aria-selected="false"><span class="ico">⏰</span><span class="navlabel">Schedules</span></button>
@@ -317,6 +342,17 @@
 </aside>
 
 <main>
+  <!-- PROTECTION BAR — the pattern every privacy tool uses: is it on, right now? -->
+  <div id="shield" class="shield" role="status" aria-live="polite">
+    <span class="shieldmark" id="shieldMark">🛡️</span>
+    <div class="shieldtext">
+      <b id="shieldTitle">Checking protection…</b>
+      <span id="shieldSub" class="dim"></span>
+    </div>
+    <div class="shieldstats" id="shieldStats"></div>
+    <button class="btn" id="verifyBtn" onclick="verifyNow()">Verify now</button>
+  </div>
+
   <!-- CHAT -->
   <section id="chat" class="active">
     <div class="head">
@@ -555,9 +591,72 @@ document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
   LOADERS[b.dataset.view]();
 });
 addEventListener("keydown", e => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault();
-    document.querySelector('#nav button[data-view="chat"]').click(); }
+  if (e.target.matches("input, textarea, select")) {
+    if (e.key === "Escape") e.target.blur();
+    if (!(e.metaKey || e.ctrlKey)) return;
+  }
+  const nav = [...document.querySelectorAll("#nav button")];
+  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+    e.preventDefault(); nav[0].click(); $("prompt").focus(); return;
+  }
+  // ⌘1…⌘8 jump straight to a panel — a developer tool should never need the mouse.
+  if ((e.metaKey || e.ctrlKey) && /^[1-8]$/.test(e.key)) {
+    e.preventDefault();
+    const target = nav[parseInt(e.key, 10) - 1];
+    if (target) target.click();
+  }
 });
+
+/* ── the protection bar ────────────────────────────────────────────────── */
+async function loadShield() {
+  const bar = $("shield");
+  try {
+    const [h, a, p] = await Promise.all([
+      api("/health"),
+      api("/audit?n=1").catch(() => ({})),
+      api("/preflight").catch(() => null),
+    ]);
+    const viol = (h.egress_sentinel?.violations || []).length;
+    const fails = p ? p.checks.filter(c => c.status === "FAIL") : [];
+    const ok = !viol && a.chain_valid !== false && (!p || p.ok);
+
+    bar.className = "shield" + (ok ? "" : " bad");
+    $("shieldMark").textContent = ok ? "🛡️" : "⚠️";
+    $("shieldTitle").textContent = ok
+      ? "Protected — nothing has left this machine"
+      : "Protection is not intact";
+    $("shieldSub").textContent = ok
+      ? `${h.egress_sentinel?.samples || 0} egress samples · all clean · audit chain verified`
+      : (viol ? `${viol} egress violation(s) recorded`
+              : a.chain_valid === false ? "the audit chain no longer verifies"
+              : `${fails.length} preflight check(s) failing: ${fails.map(c => c.name).join(", ")}`);
+
+    const stat = (label, good) =>
+      `<span class="shieldstat"><span class="d" style="background:${
+        good ? "var(--good)" : "var(--crit)"}"></span>${label}</span>`;
+    $("shieldStats").innerHTML =
+      stat("local engine", h.engine === "ok") +
+      stat("zero egress", !viol) +
+      stat("audit intact", a.chain_valid !== false) +
+      stat("model pinned", h.model_pinning === "enforced");
+    $("trustDot").style.background = ok ? "var(--good)" : "var(--crit)";
+  } catch {
+    bar.className = "shield bad";
+    $("shieldMark").textContent = "⚠️";
+    $("shieldTitle").textContent = "Kernel unreachable";
+    $("shieldSub").textContent = "the console cannot confirm protection";
+    $("shieldStats").innerHTML = "";
+  }
+}
+
+async function verifyNow() {
+  const b = $("verifyBtn");
+  b.disabled = true; b.textContent = "Verifying…";
+  await loadShield();
+  await loadStatus();
+  b.disabled = false; b.textContent = "Verify now";
+  document.querySelector('#nav button[data-view="trust"]').click();
+}
 
 /* ── status rail ───────────────────────────────────────────────────────── */
 async function loadStatus() {
@@ -683,7 +782,7 @@ function renderAudit() {
       ? `${esc(r.status)} · ${esc(JSON.stringify(r.params || {}).slice(0, 60))}`
       : esc(String(r.prompt || r.detail || r.remote || "").slice(0, 60));
     return `<tr>
-      <td class="mono dim">${esc((r.ts || "").replace("T", " ").slice(0, 19))}</td>
+      <td class="mono dim" title="${esc(r.ts || "")}">${esc(ago(r.ts))}</td>
       <td>${eventPill(r.event)}</td>
       <td class="mono">${esc(r.tool || "—")}</td>
       <td class="muted">${detail}</td>
@@ -691,12 +790,33 @@ function renderAudit() {
     </tr>`;
   }).join("") : `<tr><td colspan="5" class="empty">No matching records.</td></tr>`;
 }
-const eventPill = ev => {
-  const bad = ev === "egress_violation" || ev === "memory_error";
-  const color = bad ? "var(--crit)" : ev === "model_verification" ? "var(--accent)"
-    : ev === "tool_execution" ? "var(--text-2)" : "var(--text-3)";
-  return `<span class="pill" style="color:${color}">${esc(ev)}</span>`;
+/* Severity, the way a status page does it: an icon AND a label, never colour alone. */
+const SEVERITY = {
+  egress_violation:            ["critical", "🔴", "var(--crit)"],
+  memory_error:                ["warning",  "🟡", "var(--warn)"],
+  approval_requested:          ["held",     "✋", "var(--serious)"],
+  approval_decision:           ["decided",  "✅", "var(--good)"],
+  tool_executed_after_approval:["executed", "⚙️", "var(--good)"],
+  model_verification:          ["verified", "🔏", "var(--accent)"],
+  scheduled_run_started:       ["job",      "⏰", "var(--accent)"],
+  scheduled_run_finished:      ["job",      "⏰", "var(--accent)"],
+  tool_execution:              ["ok",       "⚙️", "var(--text-2)"],
 };
+const eventPill = ev => {
+  const [, icon, color] = SEVERITY[ev] || ["", "•", "var(--text-3)"];
+  return `<span class="pill" style="color:${color}">${icon} ${esc(ev)}</span>`;
+};
+
+/* "2 min ago" reads faster than a timestamp when you are scanning for what just happened. */
+function ago(ts) {
+  const t = Date.parse((ts || "").replace(" ", "T"));
+  if (isNaN(t)) return "";
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return `${Math.round(s)}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
 
 /* ── memory ────────────────────────────────────────────────────────────── */
 async function loadMemory() {
@@ -789,9 +909,12 @@ async function loadDocs() {
     : `<tr><td colspan="2" class="empty">No documents yet — add files to the folder above and re-index.</td></tr>`;
 }
 async function reindex() {
-  $("docRows").innerHTML = `<tr><td colspan="2" class="empty">Indexing…</td></tr>`;
+  const b = event?.target;
+  if (b) { b.disabled = true; b.textContent = "Indexing…"; }
+  $("docRows").innerHTML = `<tr><td colspan="2" class="empty">Indexing your documents locally…</td></tr>`;
   await api("/documents/reindex", { method: "POST" });
-  loadDocs();
+  await loadDocs();
+  if (b) { b.disabled = false; b.textContent = "↻ Re-index"; }
 }
 
 /* Show what a tool actually PRODUCED — the document, not a byte count. */
@@ -1066,10 +1189,12 @@ async function send() {
 }
 
 loadStatus();
+loadShield();
 loadConversations();
 loadApprovals();
 $("prompt").focus();
 setInterval(loadStatus, 10000);
+setInterval(loadShield, 10000);
 setInterval(loadApprovals, 5000);
 </script>
 </body>
