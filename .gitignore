@@ -21,3 +21,7 @@ LAUNCH_POSTS.md
 .DS_Store
 .idea/
 .vscode/
+documents/
+document_index/
+conversations/
+approvals.json

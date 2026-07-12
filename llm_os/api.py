@@ -12,19 +12,25 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import config, modeltrust
+from .approvals import ApprovalStore
 from .audit import AuditLog
+from .conversations import ConversationStore
+from .documents import create_index
 from .kernel import Kernel
 from .mcp_client import MCPManager
 from .memory import create_memory
 from .sentinel import EgressSentinel
 from .tools import default_registry
+from .tools.document_tools import document_tools
 from .tools.memory_tools import memory_tools
 
-app = FastAPI(title="LLM OS Kernel", version="0.1.0")
+app = FastAPI(title="LLM OS Kernel", version="0.2.0")
 
 _kernel: Kernel = None  # initialized on startup so tests can inject their own
 _mcp: MCPManager = None
 _sentinel: EgressSentinel = None
+_docs = None
+_convos: ConversationStore = None
 
 
 def _verify_model_or_die(audit: AuditLog) -> None:
@@ -44,7 +50,7 @@ def _verify_model_or_die(audit: AuditLog) -> None:
 
 @app.on_event("startup")
 def _startup() -> None:
-    global _kernel, _mcp, _sentinel
+    global _kernel, _mcp, _sentinel, _docs, _convos
     audit = AuditLog(config.AUDIT_DIR)
     _verify_model_or_die(audit)
     _sentinel = EgressSentinel(audit)
@@ -60,10 +66,27 @@ def _startup() -> None:
             for tool in memory_tools(memory):
                 registry.register(tool)
 
+    if config.DOCUMENTS_ENABLED:
+        _docs = create_index(
+            config.DOCUMENTS_DIR, config.DOCUMENT_INDEX_DIR,
+            config.OLLAMA_HOST, config.EMBED_MODEL,
+        )
+        if _docs is not None:
+            for tool in document_tools(_docs):
+                registry.register(tool)
+
     _mcp = MCPManager(config.MCP_CONFIG)
     _mcp.start()
     _mcp.register_tools(registry)
-    _kernel = Kernel(registry=registry, memory=memory, audit=audit)
+
+    # Human approval gates: a tool listed here cannot run until a person
+    # approves it, no matter what the model decides.
+    registry.require_approval(*config.APPROVAL_TOOLS)
+
+    _convos = ConversationStore(config.CONVERSATIONS_DIR)
+    approvals = ApprovalStore(config.APPROVALS_FILE)
+    _kernel = Kernel(registry=registry, memory=memory, audit=audit,
+                     approvals=approvals)
 
 
 @app.on_event("shutdown")
@@ -82,27 +105,140 @@ class Turn(BaseModel):
 class ChatRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=8000)
     history: list[Turn] = Field(default_factory=list)
+    # When set, the exchange is persisted and prior turns are replayed —
+    # so a refresh (or a reboot) doesn't lose the conversation.
+    conversation_id: str | None = None
+
+
+def _history_for(request: ChatRequest) -> list:
+    if request.conversation_id and _convos:
+        stored = _convos.history_for(request.conversation_id, config.MAX_HISTORY_TURNS)
+        if stored:
+            return stored
+    return [t.model_dump() for t in request.history]
 
 
 @app.post("/chat")
 def chat(request: ChatRequest) -> dict:
     try:
-        return _kernel.handle(
-            request.prompt, [t.model_dump() for t in request.history]
-        )
+        result = _kernel.handle(request.prompt, _history_for(request))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Kernel error: {exc}")
+    if request.conversation_id and _convos:
+        _convos.append_turn(
+            request.conversation_id, request.prompt, result["reply"],
+            result.get("trace"), result.get("memories"),
+        )
+    return result
+
+
+# ── conversations: chats that survive a refresh, a restart, a reboot ────────
+
+@app.get("/conversations")
+def conversations() -> dict:
+    return {"conversations": _convos.list() if _convos else []}
+
+
+@app.post("/conversations")
+def create_conversation() -> dict:
+    if _convos is None:
+        raise HTTPException(400, "Conversations are disabled.")
+    return _convos.create()
+
+
+@app.get("/conversations/{conversation_id}")
+def get_conversation(conversation_id: str) -> dict:
+    record = _convos.get(conversation_id) if _convos else None
+    if record is None:
+        raise HTTPException(404, "No such conversation.")
+    return record
+
+
+@app.delete("/conversations/{conversation_id}")
+def delete_conversation(conversation_id: str) -> dict:
+    if _convos is None or not _convos.delete(conversation_id):
+        raise HTTPException(404, "No such conversation.")
+    _kernel.audit.append("conversation_deleted", {"conversation_id": conversation_id})
+    return {"deleted": conversation_id}
+
+
+# ── approvals: the model proposes, a human authorizes ───────────────────────
+
+class Decision(BaseModel):
+    decision: str = Field("approve", pattern="^(approve|reject)$")
+    who: str = "user"
+
+
+@app.get("/approvals")
+def approvals() -> dict:
+    store = _kernel.approvals
+    return {
+        "pending": store.pending() if store else [],
+        "recent": store.recent() if store else [],
+        "gated_tools": [
+            t["name"] for t in _kernel.registry.describe() if t["requires_approval"]
+        ],
+    }
+
+
+@app.post("/approvals/{approval_id}")
+def decide_approval(approval_id: str, decision: Decision) -> dict:
+    """Approve or reject a pending tool call. Approving RUNS it."""
+    store = _kernel.approvals
+    if store is None:
+        raise HTTPException(400, "Approvals are not configured.")
+    record = store.decide(approval_id, decision.decision, decision.who)
+    if "error" in record:
+        raise HTTPException(400, record["error"])
+
+    _kernel.audit.append(
+        "approval_decision",
+        {"approval_id": approval_id, "tool": record["tool"],
+         "decision": record["status"], "decided_by": decision.who},
+    )
+    if record["status"] != "APPROVED":
+        return {"approval_id": approval_id, "status": record["status"],
+                "executed": False}
+    return _kernel.execute_approved(approval_id)
+
+
+# ── documents: answer from the user's own files, with citations ─────────────
+
+@app.get("/documents")
+def documents() -> dict:
+    if _docs is None:
+        return {"enabled": False, "documents": []}
+    return {
+        "enabled": True,
+        "folder": str(config.DOCUMENTS_DIR),
+        "chunks": _docs.count(),
+        "documents": _docs.documents(),
+    }
+
+
+@app.post("/documents/reindex")
+def reindex_documents() -> dict:
+    if _docs is None:
+        raise HTTPException(400, "Document Q&A is disabled (needs chromadb + engine).")
+    result = _docs.reindex()
+    _kernel.audit.append("documents_reindexed", result)
+    return result
 
 
 @app.post("/chat/stream")
 def chat_stream(request: ChatRequest) -> StreamingResponse:
     """Server-sent events: tool calls as they happen, then the answer,
     token by token. A local model is slow — show the work."""
-    history = [t.model_dump() for t in request.history]
+    history = _history_for(request)
 
     def events():
         try:
             for event in _kernel.stream(request.prompt, history):
+                if event.get("type") == "done" and request.conversation_id and _convos:
+                    _convos.append_turn(
+                        request.conversation_id, request.prompt, event.get("reply", ""),
+                        event.get("trace"), event.get("memories"),
+                    )
                 yield f"data: {json.dumps(event, default=str)}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"

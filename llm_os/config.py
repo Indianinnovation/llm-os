@@ -18,6 +18,22 @@ MEMORY_DIR = Path(os.environ.get("MEMORY_DIR", BASE_DIR / "memory_store"))
 EMBED_MODEL = os.environ.get("LLM_OS_EMBED_MODEL", "all-minilm")
 MEMORY_ENABLED = os.environ.get("LLM_OS_MEMORY", "1") == "1"
 
+# Document Q&A: drop files here; answers cite them. Nothing is uploaded.
+DOCUMENTS_DIR = Path(os.environ.get("DOCUMENTS_DIR", BASE_DIR / "documents"))
+DOCUMENT_INDEX_DIR = Path(os.environ.get("DOCUMENT_INDEX", BASE_DIR / "document_index"))
+DOCUMENTS_ENABLED = os.environ.get("LLM_OS_DOCUMENTS", "1") == "1"
+
+# Conversations (persisted chats) and human approval gates.
+CONVERSATIONS_DIR = Path(os.environ.get("CONVERSATIONS_DIR", BASE_DIR / "conversations"))
+APPROVALS_FILE = Path(os.environ.get("APPROVALS_FILE", BASE_DIR / "approvals.json"))
+
+# Tools that may not run until a human approves them. Comma-separated.
+# Default: nothing is gated — opt in deliberately, e.g.
+#   LLM_OS_APPROVAL_TOOLS=write_markdown,execute_remediation
+APPROVAL_TOOLS = [
+    t.strip() for t in os.environ.get("LLM_OS_APPROVAL_TOOLS", "").split(",") if t.strip()
+]
+
 # MCP server definitions, Claude-Desktop-compatible {"mcpServers": {...}}.
 MCP_CONFIG = Path(os.environ.get("MCP_CONFIG", BASE_DIR / "mcp_servers.json"))
 

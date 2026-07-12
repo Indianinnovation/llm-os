@@ -28,6 +28,11 @@ class Tool:
     parameters: Optional[Type[BaseModel]] = None
     json_schema: Optional[dict] = None
     source: str = "builtin"
+    # A tool that changes the world outside the sandbox (writes, sends,
+    # executes) can require a human to confirm before the kernel runs it.
+    # The model can propose; only a person can authorize. The decision is
+    # written to the audit chain.
+    requires_approval: bool = False
 
     def spec(self) -> dict:
         if self.parameters is not None:
@@ -76,6 +81,18 @@ class ToolRegistry:
 
     def describe(self) -> List[dict]:
         return [
-            {"name": t.name, "description": t.description, "source": t.source}
+            {
+                "name": t.name,
+                "description": t.description,
+                "source": t.source,
+                "requires_approval": t.requires_approval,
+            }
             for t in self._tools.values()
         ]
+
+    def require_approval(self, *names: str) -> None:
+        """Mark tools as human-gated (config-driven; see LLM_OS_APPROVAL_TOOLS)."""
+        for name in names:
+            tool = self._tools.get(name)
+            if tool is not None:
+                tool.requires_approval = True

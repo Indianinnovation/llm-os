@@ -29,6 +29,7 @@ Call a tool ONLY when the request needs an action or live data:
 - write_markdown: the user wants content saved as a file, note, or document.
 - remember: the user says "remember ..." or shares a lasting fact about themselves or their work.
 - search_memory: the user asks about something they told you in a previous conversation.
+- search_documents: the user asks about THEIR OWN files — "my NDA", "the contract", "the spec", "my notes", "what does the report say". You DO have access to their documents through this tool: never reply that you cannot see their files. Call it, then answer citing the file it returned.
 - other tools: call them when the request clearly matches their description (e.g. current time, disk, system info).
 
 Answer directly WITHOUT any tool when the user asks for definitions, explanations, opinions, comparisons, translations, creative writing, or general knowledge — even if the topic mentions numbers, calculators, disks, files, or memory. Questions like "what is X", "explain X", "translate X", "write a poem" need NO tool.
@@ -48,29 +49,65 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
-def _parse_textual_tool_call(content: str) -> Optional[dict]:
-    """Recover a tool call a model emitted as text instead of the
-    structured tool_calls field (some Ollama chat templates, e.g.
-    qwen2.5-coder, do this). Accepts bare JSON, ```json fences, and
-    <tool_call> wrappers shaped like {"name": ..., "arguments": ...}."""
-    text = (content or "").strip()
-    wrapped = re.search(r"<tool_call>\s*(.*?)\s*</tool_call>", text, re.DOTALL)
-    if wrapped:
-        text = wrapped.group(1)
-    elif text.startswith("```"):
-        text = text.strip("`").strip()
-        if text.startswith("json"):
-            text = text[4:].strip()
-    try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        return None
+def _as_tool_call(data: Any) -> Optional[dict]:
     if not isinstance(data, dict) or not isinstance(data.get("name"), str):
         return None
     arguments = data.get("arguments", data.get("parameters", {}))
     if not isinstance(arguments, dict):
         return None
     return {"function": {"name": data["name"], "arguments": arguments}}
+
+
+def _parse_textual_tool_call(content: str) -> Optional[dict]:
+    """Recover a tool call a model emitted as text instead of the
+    structured tool_calls field (some Ollama chat templates, e.g.
+    qwen2.5-coder, do this).
+
+    Handles bare JSON, ```json fences, <tool_call> wrappers, AND a tool
+    call embedded in prose ("I'll search your documents. {"name": ...}")
+    — which is what qwen does when it also narrates.
+    """
+    text = (content or "").strip()
+    if not text:
+        return None
+
+    wrapped = re.search(r"<tool_call>\s*(.*?)\s*</tool_call>", text, re.DOTALL)
+    if wrapped:
+        text = wrapped.group(1).strip()
+    elif "```" in text:
+        fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+        if fenced:
+            text = fenced.group(1).strip()
+
+    # Whole thing is the call?
+    try:
+        call = _as_tool_call(json.loads(text))
+        if call:
+            return call
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Otherwise scan for a JSON object inside the prose. Two shapes occur:
+    #   {"name": "t", "arguments": {...}}      — the documented one
+    #   toolname {"arg": "value"}              — name outside the JSON
+    # The caller validates the name against the registry, so a stray JSON
+    # blob in an ordinary answer cannot be mistaken for a call.
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            data, _ = decoder.raw_decode(text[index:])
+        except ValueError:
+            continue
+        call = _as_tool_call(data)
+        if call:
+            return call
+        if isinstance(data, dict):
+            preceding = re.search(r"([A-Za-z_][A-Za-z0-9_]*)\s*$", text[:index])
+            if preceding:
+                return {"function": {"name": preceding.group(1), "arguments": data}}
+    return None
 
 
 class Kernel:
@@ -81,12 +118,14 @@ class Kernel:
         model: str = config.MODEL_NAME,
         audit: Optional[AuditLog] = None,
         memory: Optional[EpisodicMemory] = None,
+        approvals=None,
     ):
         self.registry = registry or default_registry()
         self.client = client or Client(host=config.OLLAMA_HOST)
         self.model = model
         self.audit = audit or AuditLog(config.AUDIT_DIR)
         self.memory = memory
+        self.approvals = approvals
 
     def _page_in_memories(self, prompt: str) -> list:
         """MemGPT-style paging: pull relevant long-term memories into the
@@ -330,7 +369,61 @@ class Kernel:
                            trace, memories, started),
         }
 
+    def execute_approved(self, approval_id: str) -> dict:
+        """Run a tool call a human has APPROVED. Refused otherwise."""
+        if self.approvals is None:
+            return {"error": "Approvals are not configured."}
+        record = self.approvals.get(approval_id)
+        if record is None:
+            return {"error": f"No approval request '{approval_id}'."}
+        if record["status"] != "APPROVED":
+            return {
+                "executed": False,
+                "error": f"REFUSED: {approval_id} is {record['status']} — execution "
+                         "requires an APPROVED request. This gate is mechanical.",
+            }
+        outcome = self._run_tool(record["tool"], record["params"], record["prompt"])
+        self.approvals.mark_executed(approval_id, outcome["result"])
+        self.audit.append(
+            "tool_executed_after_approval",
+            {
+                "approval_id": approval_id,
+                "tool": record["tool"],
+                "decided_by": record.get("decided_by"),
+                "status": outcome["status"],
+            },
+        )
+        return {"executed": True, "approval_id": approval_id, **outcome}
+
     def _execute(self, name: str, args: dict, prompt: str) -> dict:
+        """Route one tool call — through the approval gate if the tool needs it."""
+        tool = self.registry.get(name)
+        if tool is not None and tool.requires_approval and self.approvals is not None:
+            record = self.approvals.request(name, args, prompt)
+            audit_id = self.audit.append(
+                "approval_requested",
+                {"approval_id": record["id"], "tool": name, "params": args,
+                 "prompt": prompt},
+            )
+            return {
+                "tool": name,
+                "params": args,
+                "status": "awaiting_approval",
+                "approval_id": record["id"],
+                "result": {
+                    "awaiting_approval": True,
+                    "approval_id": record["id"],
+                    "message": (
+                        f"'{name}' changes something outside the sandbox, so it needs "
+                        "a human decision. It has NOT run. Tell the user it is waiting "
+                        f"for their approval ({record['id']}) and stop."
+                    ),
+                },
+                "audit_id": audit_id,
+            }
+        return self._run_tool(name, args, prompt)
+
+    def _run_tool(self, name: str, args: dict, prompt: str) -> dict:
         tool = self.registry.get(name)
         started = time.time()
         if tool is None:

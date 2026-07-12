@@ -267,10 +267,14 @@
     <button data-view="chat" aria-selected="true"><span class="ico">💬</span><span class="navlabel">Chat</span></button>
     <button data-view="trust" aria-selected="false"><span class="ico">🔒</span><span class="navlabel">Trust</span><span class="dot" id="trustDot"></span></button>
     <button data-view="audit" aria-selected="false"><span class="ico">🧾</span><span class="navlabel">Audit</span></button>
+    <button data-view="docs" aria-selected="false"><span class="ico">📄</span><span class="navlabel">Documents</span></button>
     <button data-view="memory" aria-selected="false"><span class="ico">🧠</span><span class="navlabel">Memory</span></button>
     <button data-view="tools" aria-selected="false"><span class="ico">🔧</span><span class="navlabel">Tools</span></button>
     <button data-view="models" aria-selected="false"><span class="ico">📦</span><span class="navlabel">Models</span></button>
   </nav>
+
+  <div class="grouphead" style="margin:16px 0 6px 10px">Conversations</div>
+  <div id="convoList" style="display:flex;flex-direction:column;gap:2px"></div>
 
   <div class="sidefoot">
     <div class="statline"><span id="engDot">●</span> engine <b id="engModel">…</b></div>
@@ -293,6 +297,7 @@
       <div class="actions"><button class="btn" onclick="newChat()">＋ New chat</button></div>
     </div>
     <div class="chatwrap">
+      <div id="approvalBar"></div>
       <div id="thread"></div>
       <div class="composer">
         <div class="row">
@@ -343,6 +348,27 @@
         <thead><tr><th>Time</th><th>Event</th><th>Tool</th><th>Detail</th><th>Hash</th></tr></thead>
         <tbody id="auditRows"></tbody>
       </table></div></div>
+    </div>
+  </section>
+
+  <!-- DOCUMENTS -->
+  <section id="docs">
+    <div class="head">
+      <div>
+        <h2>Documents</h2>
+        <p>Drop files into the folder below and ask about them in chat — answers come back
+           <b>with citations</b>. Indexed and read entirely on this machine.</p>
+      </div>
+      <div class="actions"><button class="btn primary" onclick="reindex()">↻ Re-index</button></div>
+    </div>
+    <div class="wrap">
+      <div class="tiles" id="docTiles" style="margin-bottom:16px"></div>
+      <div class="tablecard"><table>
+        <thead><tr><th>Document</th><th style="width:120px">Chunks</th></tr></thead>
+        <tbody id="docRows"></tbody>
+      </table></div>
+      <p class="dim" style="margin-top:12px">Supported: .md .txt .log .csv .json .yaml
+        (and .pdf with <code class="mono">pip install pypdf</code>).</p>
     </div>
   </section>
 
@@ -428,7 +454,7 @@ if (saved) document.documentElement.setAttribute("data-theme", saved);
 
 /* nav */
 const LOADERS = { chat: () => $("prompt").focus(), trust: loadTrust, audit: loadAudit,
-                  memory: loadMemory, tools: loadTools, models: loadModels };
+                  docs: loadDocs, memory: loadMemory, tools: loadTools, models: loadModels };
 document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("#nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === b.dataset.view));
@@ -646,6 +672,104 @@ async function loadModels() {
   }).join("");
 }
 
+/* ── documents (#4) ────────────────────────────────────────────────────── */
+async function loadDocs() {
+  const d = await api("/documents");
+  if (!d.enabled) {
+    $("docTiles").innerHTML = `<div class="card tile"><div class="k">Document Q&A</div>
+      <div class="v" style="color:var(--warn)">disabled</div>
+      <div class="s">needs chromadb + the embedding model</div></div>`;
+    $("docRows").innerHTML = "";
+    return;
+  }
+  $("docTiles").innerHTML = `
+    <div class="card tile"><div class="k">Documents</div><div class="v">${d.documents.length}</div>
+      <div class="s">indexed &amp; searchable</div></div>
+    <div class="card tile"><div class="k">Chunks</div><div class="v">${d.chunks}</div>
+      <div class="s">citable passages</div></div>
+    <div class="card tile" style="grid-column:span 2"><div class="k">Folder</div>
+      <div class="v" style="font-size:13px;font-family:var(--mono);word-break:break-all">${esc(d.folder)}</div>
+      <div class="s">drop files here, then re-index</div></div>`;
+  $("docRows").innerHTML = d.documents.length ? d.documents.map(doc => `
+    <tr><td class="mono">📄 ${esc(doc.file)}</td><td class="dim">${doc.chunks}</td></tr>`).join("")
+    : `<tr><td colspan="2" class="empty">No documents yet — add files to the folder above and re-index.</td></tr>`;
+}
+async function reindex() {
+  $("docRows").innerHTML = `<tr><td colspan="2" class="empty">Indexing…</td></tr>`;
+  await api("/documents/reindex", { method: "POST" });
+  loadDocs();
+}
+
+/* ── approvals (#5) ────────────────────────────────────────────────────── */
+async function loadApprovals() {
+  let d;
+  try { d = await api("/approvals"); } catch { return; }
+  const pending = d.pending || [];
+  $("approvalBar").innerHTML = pending.length ? pending.map(p => `
+    <div class="verdict bad" style="margin:14px 28px 0;padding:14px 16px">
+      <div class="mark">✋</div>
+      <div style="flex:1">
+        <h3 style="font-size:14.5px">${esc(p.tool)} needs your approval</h3>
+        <p class="mono" style="font-size:12px">${esc(JSON.stringify(p.params).slice(0, 90))}</p>
+      </div>
+      <div class="row">
+        <button class="btn primary" onclick="decide('${esc(p.id)}','approve')">Approve &amp; run</button>
+        <button class="btn danger" onclick="decide('${esc(p.id)}','reject')">Reject</button>
+      </div>
+    </div>`).join("") : "";
+}
+async function decide(id, decision) {
+  await fetch(`/approvals/${id}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, who: "console user" }),
+  });
+  loadApprovals();
+  if (decision === "approve") {
+    bubble("bot", `<span class="dim">✓ approved — the tool ran. See the Audit panel for the record.</span>`)
+      .classList.remove("streaming");
+  }
+}
+
+/* ── conversations (#3) ────────────────────────────────────────────────── */
+let conversationId = localStorage.getItem("llmos-convo") || null;
+
+async function loadConversations() {
+  const d = await api("/conversations");
+  $("convoList").innerHTML = (d.conversations || []).slice(0, 8).map(c => `
+    <button class="btn" style="justify-content:flex-start;border-color:${
+      c.id === conversationId ? "var(--accent)" : "transparent"};background:none;
+      font-size:12.5px;padding:6px 10px;text-align:left"
+      onclick="openConversation('${esc(c.id)}')" title="${esc(c.title)}">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.title)}</span>
+      <span class="dim" style="margin-left:auto;font-size:11px">${c.turns}</span>
+    </button>`).join("") ||
+    `<div class="dim" style="padding:4px 10px;font-size:12px">No saved chats yet.</div>`;
+}
+
+async function openConversation(id) {
+  const c = await api(`/conversations/${id}`);
+  conversationId = id;
+  localStorage.setItem("llmos-convo", id);
+  history = [];
+  $("thread").innerHTML = "";
+  for (const turn of c.turns) {
+    bubble("user", esc(turn.prompt));
+    if (turn.tools?.length) {
+      const events = document.createElement("div");
+      events.className = "events";
+      events.innerHTML = turn.tools.map(t =>
+        `<span class="ev">⚙ ${esc(t.tool)} · ${esc(t.audit_id || "-")}</span>`).join("");
+      $("thread").appendChild(events);
+    }
+    bubble("bot", esc(turn.reply)).classList.remove("streaming");
+    history.push({ role: "user", content: turn.prompt },
+                 { role: "assistant", content: turn.reply });
+  }
+  history = history.slice(-12);
+  document.querySelector('#nav button[data-view="chat"]').click();
+  loadConversations();
+}
+
 /* ── chat ──────────────────────────────────────────────────────────────── */
 let history = [], busy = false;
 const SUGGESTIONS = [
@@ -665,11 +789,18 @@ function welcome() {
   $("thread").innerHTML = `<div class="welcome">
     <div class="big">🧠</div>
     <h3>Everything runs on this machine</h3>
-    <p>Ask anything. Tool calls appear as they happen, each with the audit id that proves it ran.</p>
+    <p>Ask anything — including about your own documents. Tool calls appear as they
+       happen, each with the audit id that proves it ran. Chats are saved.</p>
   </div>`;
 }
 welcome();
-function newChat() { history = []; welcome(); $("prompt").focus(); }
+async function newChat() {
+  const c = await api("/conversations", { method: "POST" });
+  conversationId = c.id;
+  localStorage.setItem("llmos-convo", c.id);
+  history = []; welcome(); $("prompt").focus();
+  loadConversations();
+}
 
 function bubble(cls, html) {
   if ($("thread").querySelector(".welcome")) $("thread").innerHTML = "";
@@ -694,10 +825,16 @@ async function send() {
   const bot = bubble("bot", "");
   let reply = "";
 
+  if (!conversationId) {
+    const c = await api("/conversations", { method: "POST" });
+    conversationId = c.id;
+    localStorage.setItem("llmos-convo", c.id);
+  }
+
   try {
     const res = await fetch("/chat/stream", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, history }),
+      body: JSON.stringify({ prompt, history, conversation_id: conversationId }),
     });
     const reader = res.body.getReader(), dec = new TextDecoder();
     let buf = "";
@@ -738,11 +875,16 @@ async function send() {
   history.push({ role: "user", content: prompt }, { role: "assistant", content: reply });
   history = history.slice(-12);
   busy = false; $("sendBtn").disabled = false; $("prompt").focus();
+  loadApprovals();        // a gated tool may now be waiting on a human
+  loadConversations();
 }
 
 loadStatus();
+loadConversations();
+loadApprovals();
 $("prompt").focus();
 setInterval(loadStatus, 10000);
+setInterval(loadApprovals, 5000);
 </script>
 </body>
 </html>

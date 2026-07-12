@@ -47,7 +47,8 @@ in the Docker sandbox).
 
 | Panel | What it answers |
 |---|---|
-| 💬 **Chat** | Ask anything — answers **stream token by token**, and each tool call appears live as a chip with its audit id. Follow-ups work ("and cell 5?") |
+| 💬 **Chat** | Ask anything — answers **stream token by token**, each tool call appears live as a chip with its audit id, follow-ups work, and **chats are saved** (they survive a refresh, a restart, a reboot) |
+| 📄 **Documents** | Drop your files in `documents/` and ask about them — answers come back **with citations** (`sample-nda.md (chunk 1/1)`), indexed and read entirely on this machine |
 | 🔒 **Trust** | Are all 12 privacy checks passing *right now*? Has the egress sentinel seen anything leave? Is the model digest still pinned? |
 | 🧾 **Audit** | Every routing decision and tool execution, hash-chain verified — searchable, and exportable as signed-in-order JSONL for an auditor |
 | 🧠 **Memory** | Everything the system remembers about you — searchable, and **erasable** (one record, or all of it) |
@@ -58,6 +59,41 @@ This is the surface a CTO, a compliance officer, or a security reviewer
 actually needs: not "we promise nothing leaves," but a page that says
 *nothing has left, here is the log, here is the proof, delete anything
 you want.*
+
+## Ask your own documents — with citations
+
+```bash
+cp ~/contracts/*.md documents/     # your files, on your machine
+curl -X POST localhost:8000/documents/reindex
+```
+
+> **You:** What is the liability cap in my NDA, and which law governs it?
+> ⚙ *search_documents · audit ee0d7301a20d*
+> **LLM OS:** The liability cap is **USD 250,000**, except for breaches of
+> Section 4 (Confidentiality). Governing law: **State of Delaware**.
+> *— sample-nda.md (chunk 1/1)*
+
+Local embeddings, local index, cited answers. A lawyer can use this without
+writing a line of code, and nothing is uploaded anywhere.
+
+## Human approval gates — the model proposes, you authorize
+
+Any tool can be marked human-gated. The kernel then **refuses to run it**
+until a person approves — the gate is state the kernel checks, not an
+instruction in a prompt:
+
+```bash
+LLM_OS_APPROVAL_TOOLS=write_markdown python scripts/launch.py
+```
+
+> **You:** Write a markdown note called quarterly-report…
+> ✋ **write_markdown needs your approval** — `{"filename": "quarterly-report", …}`
+> `[Approve & run]` `[Reject]`
+
+The request, the decision, the approver, and the execution each become
+records in the audit chain. This is what makes "give the agent write access"
+safe — and it's how you'd gate `send_email` or `execute_change` in your own
+MCP server.
 
 ## Why
 
@@ -432,6 +468,8 @@ needed.
 - [x] Preflight gate: recommended privacy settings enforced before startup
 - [x] First vertical built on the kernel: [TelecomOS](https://github.com/Indianinnovation/telecomos)
 - [ ] Swappable engine adapter (llama.cpp `llama-server`, vLLM) via OpenAI-compatible API
+- [x] Conversation persistence · document Q&A with citations · human approval gates (v0.2)
+- [ ] Scheduled/background agents
 - [ ] Desktop installer (Tauri)
 
 ## License
