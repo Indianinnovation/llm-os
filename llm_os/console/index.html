@@ -218,8 +218,23 @@
   }
   .bubble {
     background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
-    padding: 10px 14px; white-space: pre-wrap; word-break: break-word; font-size: 14px;
+    padding: 10px 14px; word-break: break-word; font-size: 14px;
   }
+  .bubble.raw { white-space: pre-wrap; }
+  .bubble p { margin: 0 0 8px; }
+  .bubble p:last-child, .bubble ul:last-child, .bubble ol:last-child { margin-bottom: 0; }
+  .bubble ul, .bubble ol { margin: 4px 0 8px; padding-left: 20px; }
+  .bubble li { margin: 2px 0; }
+  .bubble h3, .bubble h4 { margin: 6px 0 6px; font-size: 14.5px; font-weight: 650; }
+  .bubble code.inline {
+    font-family: var(--mono); font-size: 12.5px; background: var(--surface-3);
+    padding: 1px 5px; border-radius: 5px;
+  }
+  .bubble pre.code {
+    font-family: var(--mono); font-size: 12.5px; background: var(--surface-3);
+    padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 6px 0;
+  }
+  .msg.user .bubble code.inline, .msg.user .bubble pre.code { background: rgba(255,255,255,.18); }
   .bubble.streaming::after {
     content: "▌"; animation: b 1s step-end infinite; margin-left: 1px; opacity: .7;
   }
@@ -473,6 +488,35 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const api = async (p, o) => { const r = await fetch(p, o); if (!r.ok) throw new Error(await r.text()); return r.json(); };
+
+/* Minimal, safe markdown → HTML. Escaped FIRST, so a model reply can never
+   inject markup. Handles what a chat answer actually contains: fenced code,
+   inline code, bold/italic, headings, lists, and paragraphs. */
+function md(src) {
+  let t = esc(src ?? "");
+  const blocks = [];
+  t = t.replace(/```(\w+)?\n?([\s\S]*?)```/g, (_, lang, code) => {
+    blocks.push(`<pre class="code">${code.replace(/\n$/, "")}</pre>`);
+    return ` ${blocks.length - 1} `;
+  });
+  t = t.replace(/`([^`\n]+)`/g, '<code class="inline">$1</code>');
+  t = t.replace(/^###\s+(.*)$/gm, "<h4>$1</h4>")
+       .replace(/^##\s+(.*)$/gm, "<h3>$1</h3>")
+       .replace(/^#\s+(.*)$/gm, "<h3>$1</h3>");
+  t = t.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+       .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>");
+  // lists
+  t = t.replace(/(?:^[-*]\s+.*(?:\n|$))+/gm, m =>
+        "<ul>" + m.trim().split("\n").map(l =>
+          `<li>${l.replace(/^[-*]\s+/, "")}</li>`).join("") + "</ul>");
+  t = t.replace(/(?:^\d+\.\s+.*(?:\n|$))+/gm, m =>
+        "<ol>" + m.trim().split("\n").map(l =>
+          `<li>${l.replace(/^\d+\.\s+/, "")}</li>`).join("") + "</ol>");
+  t = t.split(/\n{2,}/).map(p =>
+        /^\s*<(ul|ol|h3|h4|pre)/.test(p) ? p : `<p>${p.replace(/\n/g, "<br>")}</p>`
+      ).join("");
+  return t.replace(/ (\d+) /g, (_, i) => blocks[i]);
+}
 const C = { PASS: "var(--good)", WARN: "var(--warn)", FAIL: "var(--crit)" };
 const I = { PASS: "✓", WARN: "◦", FAIL: "✗" };
 
@@ -808,15 +852,35 @@ async function loadApprovals() {
     </div>`).join("") : "";
 }
 async function decide(id, decision) {
-  await fetch(`/approvals/${id}`, {
+  const res = await fetch(`/approvals/${id}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ decision, who: "console user" }),
   });
+  const d = await res.json().catch(() => ({}));
   loadApprovals();
-  if (decision === "approve") {
-    bubble("bot", `<span class="dim">✓ approved — the tool ran. See the Audit panel for the record.</span>`)
-      .classList.remove("streaming");
+
+  if (decision !== "approve") {
+    const b = bubble("bot", md(`**Rejected.** \`${esc(d.tool || "The tool")}\` was not run — nothing changed.`));
+    b.classList.remove("streaming");
+    return;
   }
+
+  // Show what actually happened: the tool chip (with its audit id) and the result.
+  const events = document.createElement("div");
+  events.className = "events";
+  events.innerHTML = `<span class="ev">⚙ ${esc(d.tool || "tool")} · ${esc(d.audit_id || "-")}</span>
+                      <span class="ev">✅ approved by you</span>`;
+  $("thread").appendChild(events);
+
+  const body = d.summary
+    ? md(d.summary)
+    : md(`Done — \`${esc(d.tool)}\` ran.`);
+  const detail = d.result
+    ? `<pre class="code">${esc(JSON.stringify(d.result, null, 2))}</pre>` : "";
+  const b = bubble("bot", body + detail);
+  b.classList.remove("streaming");
+  history.push({ role: "assistant", content: d.summary || "Approved and executed." });
+  $("thread").scrollTop = $("thread").scrollHeight;
 }
 
 /* ── conversations (#3) ────────────────────────────────────────────────── */
@@ -850,7 +914,7 @@ async function openConversation(id) {
         `<span class="ev">⚙ ${esc(t.tool)} · ${esc(t.audit_id || "-")}</span>`).join("");
       $("thread").appendChild(events);
     }
-    bubble("bot", esc(turn.reply)).classList.remove("streaming");
+    bubble("bot", md(turn.reply)).classList.remove("streaming");
     history.push({ role: "user", content: turn.prompt },
                  { role: "assistant", content: turn.reply });
   }
@@ -948,10 +1012,12 @@ async function send() {
           if (chip) { chip.className = "ev" + (ok ? "" : " err"); chip.innerHTML = html; chip.removeAttribute("id"); }
           else events.insertAdjacentHTML("beforeend", `<span class="ev${ok ? "" : " err"}">${html}</span>`);
         } else if (ev.type === "token") {
-          reply += ev.text; bot.textContent = reply;
+          reply += ev.text;
+          bot.classList.add("raw"); bot.textContent = reply;   // raw while streaming
           $("thread").scrollTop = $("thread").scrollHeight;
         } else if (ev.type === "done") {
-          reply = ev.reply || reply; bot.textContent = reply;
+          reply = ev.reply || reply;
+          bot.classList.remove("raw"); bot.innerHTML = md(reply);   // formatted when done
         } else if (ev.type === "error") {
           bot.innerHTML = `<span style="color:var(--crit)">Kernel error: ${esc(ev.error)}</span>`;
         }

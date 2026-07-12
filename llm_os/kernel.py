@@ -393,7 +393,38 @@ class Kernel:
                 "status": outcome["status"],
             },
         )
-        return {"executed": True, "approval_id": approval_id, **outcome}
+        return {
+            "executed": True,
+            "approval_id": approval_id,
+            "summary": self.summarize_tool_result(record["prompt"], outcome),
+            **outcome,
+        }
+
+    def summarize_tool_result(self, prompt: str, outcome: dict) -> str:
+        """Have the model phrase the tool's result, so an approved action
+        ends in a real answer rather than a bare confirmation."""
+        if outcome["status"] != "success":
+            return f"'{outcome['tool']}' failed: {outcome['result'].get('error', 'unknown error')}"
+        try:
+            response = self.client.chat(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content":
+                        "State plainly what was just done, using the tool result. "
+                        "One or two sentences. No preamble."},
+                    {"role": "user", "content":
+                        f"The user asked: {prompt}\n"
+                        f"After they approved it, the tool '{outcome['tool']}' ran and "
+                        f"returned: {json.dumps(outcome['result'], default=str)}"},
+                ],
+                options={"temperature": 0},
+            )
+            text = (_get(_get(response, "message", {}), "content") or "").strip()
+            if text:
+                return text
+        except Exception:
+            pass
+        return f"Done — '{outcome['tool']}' ran: {json.dumps(outcome['result'], default=str)}"
 
     def _execute(self, name: str, args: dict, prompt: str) -> dict:
         """Route one tool call — through the approval gate if the tool needs it."""
@@ -414,9 +445,12 @@ class Kernel:
                     "awaiting_approval": True,
                     "approval_id": record["id"],
                     "message": (
-                        f"'{name}' changes something outside the sandbox, so it needs "
-                        "a human decision. It has NOT run. Tell the user it is waiting "
-                        f"for their approval ({record['id']}) and stop."
+                        f"BLOCKED: '{name}' was NOT run and NOTHING was created, "
+                        "written, or changed. It needs a human's approval first.\n"
+                        "Reply in exactly this shape, and claim nothing more:\n"
+                        f"  'I've prepared {name} but haven't run it — it needs your "
+                        f"approval ({record['id']}). Nothing has been created yet.'\n"
+                        "Do NOT say the task is done, created, or completed."
                     ),
                 },
                 "audit_id": audit_id,
