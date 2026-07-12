@@ -92,12 +92,22 @@ def retrieval_matches(result: Any) -> Optional[list]:
 def filter_weak_matches(result: dict, matches: list) -> tuple:
     """Drop chunks too weak to be evidence, BEFORE the model sees them.
 
-    This is not tidying. Asked to summarize TS 38.331, retrieval returned
-    a 0.434 chunk of boilerplate plus a chunk of a *different* spec — and
-    the model wrote a confident summary that mixed the two and cited
-    neither. A weak chunk is not a hint; it is an invitation to invent.
+    This is not tidying. Asked to summarize TS 38.331, retrieval returned a
+    weak chunk of boilerplate plus a chunk of a *different* spec, and the
+    model wrote a confident summary that mixed the two and cited neither. A
+    weak chunk is not a hint; it is an invitation to invent.
+
+    But a match with NO relevance field is not a weak match — it is a tool
+    that does not publish scores (search_documents does not), having already
+    applied whatever cut its corpus deserves. Reading a missing score as zero
+    silently deleted every document hit and told the user their own indexed
+    NDA was "not in your indexed material". Absence of a score is not evidence
+    of a bad one: only an explicit score can fail an explicit floor.
     """
-    strong = [m for m in matches if m.get("relevance", 0) >= config.MIN_RELEVANCE]
+    strong = [
+        m for m in matches
+        if m.get("relevance") is None or m["relevance"] >= config.MIN_RELEVANCE
+    ]
     filtered = {**result, "matches": strong}
     if len(strong) < len(matches):
         filtered["weak_matches_dropped"] = len(matches) - len(strong)

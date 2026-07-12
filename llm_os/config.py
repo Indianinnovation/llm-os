@@ -47,13 +47,18 @@ APPROVAL_TOOLS = [
     if t.strip()
 ]
 
-# Retrieval grounding. A chunk scoring below this is not evidence: the
-# kernel drops it before the model ever sees it, and if NOTHING clears the
-# bar the kernel answers "not in your corpus" itself rather than letting
-# the model fall back on what it thinks it remembers. Measured: genuine
-# hits score 0.69–0.76; the case that produced a fabricated spec summary
-# scored 0.434.
-MIN_RELEVANCE = float(os.environ.get("LLM_OS_MIN_RELEVANCE", "0.5"))
+# Retrieval grounding: a floor, not a filter.
+#
+# A single threshold cannot referee heterogeneous corpora — measured on this
+# machine, a legitimate NDA answer scores 0.421 while a *worthless* spec
+# chunk scored 0.434. The bad match outranks the good one, so any number
+# that blocks the second also blocks the first. Relevance calibration
+# belongs to the tool that owns the corpus and its embeddings.
+#
+# What the kernel keeps is a floor against obvious noise, and the rules that
+# do not depend on a number at all: no matches means no answer, and every
+# answer built on matches carries their citations.
+MIN_RELEVANCE = float(os.environ.get("LLM_OS_MIN_RELEVANCE", "0.25"))
 
 # MCP server definitions, Claude-Desktop-compatible {"mcpServers": {...}}.
 MCP_CONFIG = Path(os.environ.get("MCP_CONFIG", BASE_DIR / "mcp_servers.json"))

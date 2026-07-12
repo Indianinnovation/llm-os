@@ -22,8 +22,14 @@ from llm_os.registry import Tool, ToolRegistry
 from tests.test_kernel import FakeClient, text_response, tool_call_response
 
 STRONG = {"citation": "3GPP TS 38.331 § 5.3.3", "excerpt": "RRC connection establishment…", "relevance": 0.761}
-WEAK = {"citation": "3GPP TS 38.331 § 38.331", "excerpt": "⚠️ paraphrased demo excerpts…", "relevance": 0.434}
-OTHER_SPEC = {"citation": "3GPP TS 28.552 § 5.1", "excerpt": "DL PRB usage…", "relevance": 0.403}
+# Noise: below the kernel's floor. A corpus-owning tool calibrates its own
+# cut (spec_rag drops anything under 0.5 on its corpus); the kernel keeps a
+# floor only against junk, because one number cannot referee every corpus —
+# a real NDA answer scores 0.421 while a worthless spec chunk scored 0.434.
+WEAK = {"citation": "3GPP TS 38.331 § 38.331", "excerpt": "⚠️ paraphrased demo excerpts…", "relevance": 0.12}
+OTHER_SPEC = {"citation": "3GPP TS 28.552 § 5.1", "excerpt": "DL PRB usage…", "relevance": 0.09}
+# A genuine document hit that the old 0.5 floor wrongly discarded.
+NDA = {"citation": "sample-nda.md (chunk 1/1)", "excerpt": "liability cap USD 250,000…", "relevance": 0.421}
 
 
 def _search_tool(result):
@@ -158,9 +164,17 @@ def test_streamed_tokens_never_carry_the_invented_summary(tmp_path):
 
 
 def test_relevance_floor_is_configurable(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "MIN_RELEVANCE", 0.4)  # accept the weak chunk
+    monkeypatch.setattr(config, "MIN_RELEVANCE", 0.05)  # accept even noise
     _, strong = filter_weak_matches({"matches": [WEAK]}, [WEAK])
     assert len(strong) == 1
+
+
+def test_a_real_document_hit_is_not_discarded_as_weak():
+    """The regression this floor caused: 'what is the liability cap in my NDA?'
+    scores 0.421 — a correct, citable answer. A floor tuned on a different
+    corpus threw it away and the kernel said 'not in your indexed material'."""
+    _, strong = filter_weak_matches({"matches": [NDA]}, [NDA])
+    assert strong == [NDA]
 
 
 # ── the other half: a mis-routed general question still gets an answer ──────
@@ -281,3 +295,19 @@ def test_history_replay_hides_kernel_annotations_from_the_model(tmp_path):
     replayed = [m["content"] for m in messages if m["role"] == "assistant"]
     assert replayed == ["5G is a mobile standard."]
     assert not any("Answered from the model's own knowledge" in c for c in replayed)
+
+
+UNSCORED = {"citation": "sample-nda.md (chunk 1/1)", "excerpt": "liability cap USD 250,000…"}
+
+
+def test_a_tool_that_publishes_no_score_is_trusted_not_deleted():
+    """search_documents returns {citation, excerpt} with no relevance field.
+    Reading a missing score as 0 deleted every document hit, and the kernel
+    told the user their own indexed NDA was 'not in your indexed material'."""
+    _, strong = filter_weak_matches({"matches": [UNSCORED]}, [UNSCORED])
+    assert strong == [UNSCORED]
+
+
+def test_an_explicit_low_score_still_fails_the_floor():
+    _, strong = filter_weak_matches({"matches": [WEAK]}, [WEAK])
+    assert strong == []
