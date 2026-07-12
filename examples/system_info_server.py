@@ -13,11 +13,12 @@ import shutil
 import time
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 mcp = FastMCP("system-info")
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def get_local_time() -> dict:
     """Get the current local date and time on this machine."""
     return {
@@ -26,7 +27,7 @@ def get_local_time() -> dict:
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def get_disk_usage() -> dict:
     """Get total, used and free disk space of the main volume in GB."""
     usage = shutil.disk_usage("/")
@@ -37,7 +38,7 @@ def get_disk_usage() -> dict:
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def get_system_info() -> dict:
     """Get the operating system, architecture and Python version."""
     return {

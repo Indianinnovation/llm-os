@@ -110,6 +110,24 @@ records in the audit chain. This is what makes "give the agent write access"
 safe — and it's how you'd gate `send_email` or `execute_change` in your own
 MCP server.
 
+**Gated by default, including tools the kernel has never seen.** MCP's own
+defaults are the safe ones — `readOnlyHint` defaults to false and
+`destructiveHint` to true — so a tool that declares nothing about itself is
+assumed to change the world, and the kernel gates it. A server opens the
+gate only by saying so:
+
+| the server declares | meaning | the kernel |
+|---|---|---|
+| `readOnlyHint: true` | changes nothing | routes it freely |
+| `destructiveHint: false` | changes something, safely (a proposal, a report) | routes it freely |
+| *nothing at all* | unknown | **asks you first** |
+
+Plug in a third-party server and its `delete_everything` waits for a human
+on the first call — you don't have to notice it, name it, or configure
+anything. And a hint can only ever *open* a gate: a tool you named in
+`LLM_OS_APPROVAL_TOOLS` stays gated no matter what the server claims about
+itself. A server's self-description is a convenience, not an authority.
+
 ## Scheduled agents — work that happens while you sleep
 
 > *"Every morning at 08:00, check disk usage and write me a report."*
@@ -526,7 +544,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-125 tests: sandbox-escape attempts against the expression evaluator,
+155 tests: sandbox-escape attempts against the expression evaluator,
 path-traversal attacks on the file tool, audit-chain tamper detection,
 model digest-pinning enforcement, egress-sentinel behavior, approval-gate
 enforcement (a gated tool cannot execute without a human decision, and a

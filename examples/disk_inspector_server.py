@@ -20,6 +20,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 MAX_ENTRIES = 50_000          # directory entries walked per request
 MAX_HASH_FILE_BYTES = 200 * 2**20   # skip hashing files larger than 200MB
@@ -205,7 +206,7 @@ def _hash_file(path: Path, limit) -> str:
     return digest.hexdigest()
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def get_folder_size(path: str) -> dict:
     """Measure the total size and file count of a specific folder, e.g.
     'Downloads' or 'Documents/projects'. Use for questions about how
@@ -213,14 +214,14 @@ def get_folder_size(path: str) -> dict:
     return folder_size(path)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def get_largest_items(path: str, top_n: int = 10) -> dict:
     """Break down which files and subfolders use the most space inside
     a folder. Use for questions like 'what is taking up space in X?'"""
     return largest_items(path, top_n)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def find_duplicate_files(path: str) -> dict:
     """Find duplicate files inside a folder by content hash. Reports
     groups of identical files and how much space the extra copies

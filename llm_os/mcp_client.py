@@ -41,6 +41,31 @@ except ImportError:  # pragma: no cover - exercised only without the SDK
     MCP_AVAILABLE = False
 
 
+def needs_approval(tool) -> bool:
+    """Should this MCP tool wait for a human?
+
+    MCP's own defaults are the safe ones — `readOnlyHint` defaults to
+    false and `destructiveHint` to true — so a tool that declares nothing
+    is assumed to change the world irreversibly. Silence is never consent.
+    A server opens the gate only by saying so, in one of two ways:
+
+      readOnlyHint=true     it changes nothing            → open
+      destructiveHint=false it changes something, safely  → open
+                            (a proposal, a report, a sim)
+      anything else                                       → gated
+
+    That middle case is the one that matters in practice: proposing a
+    network change is not the same act as executing it, and only the
+    second one should stop and ask.
+    """
+    annotations = getattr(tool, "annotations", None)
+    if getattr(annotations, "readOnlyHint", None) is True:
+        return False
+    if getattr(annotations, "destructiveHint", None) is False:
+        return False
+    return True
+
+
 class MCPManager:
     def __init__(self, config_path: Path):
         self.config_path = Path(config_path)
@@ -126,6 +151,7 @@ class MCPManager:
                             "name": tool.name,
                             "description": tool.description or "",
                             "schema": tool.inputSchema,
+                            "gated": needs_approval(tool),
                         }
                         for tool in listing.tools
                     ]
@@ -206,6 +232,11 @@ class MCPManager:
                 )
                 continue
             handler = partial(self._call_with_kwargs, entry["server"], entry["name"])
+            # A server's self-description can only ever OPEN this gate. It
+            # can never close one the operator set by name in APPROVAL_TOOLS
+            # (api.py applies those after registration) — a hint is a
+            # convenience, not an authority.
+            gated = entry.get("gated", True)
             registry.register(
                 Tool(
                     name=entry["name"],
@@ -213,8 +244,14 @@ class MCPManager:
                     handler=handler,
                     json_schema=entry["schema"],
                     source=f"mcp:{entry['server']}",
+                    requires_approval=gated,
                 )
             )
+            if gated:
+                logger.info(
+                    "MCP tool '%s' is human-gated (server did not declare it read-only).",
+                    entry["name"],
+                )
             count += 1
         return count
 
