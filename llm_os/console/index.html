@@ -249,6 +249,10 @@
   .ev.run::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
                     background: var(--accent); animation: p 1s infinite; }
   .ev.err { border-color: var(--warn); color: var(--warn); }
+  .ev.hold {
+    border-color: var(--serious); color: var(--serious);
+    background: var(--warn-sub); font-weight: 650;
+  }
   .composer {
     border-top: 1px solid var(--line); padding: 14px 28px 18px; background: var(--surface);
   }
@@ -1007,10 +1011,14 @@ async function send() {
             `<span class="ev run" id="ev-${esc(ev.tool)}">${esc(ev.tool)}</span>`);
         } else if (ev.type === "tool") {
           const chip = document.getElementById("ev-" + ev.tool);
+          const pending = ev.status === "awaiting_approval";
           const ok = ev.status === "success";
-          const html = `${ok ? "⚙" : "⚠"} ${esc(ev.tool)} · ${esc(ev.audit_id || "-")}`;
-          if (chip) { chip.className = "ev" + (ok ? "" : " err"); chip.innerHTML = html; chip.removeAttribute("id"); }
-          else events.insertAdjacentHTML("beforeend", `<span class="ev${ok ? "" : " err"}">${html}</span>`);
+          const cls = pending ? "ev hold" : ok ? "ev" : "ev err";
+          const html = pending
+            ? `✋ ${esc(ev.tool)} · needs approval`
+            : `${ok ? "⚙" : "⚠"} ${esc(ev.tool)} · ${esc(ev.audit_id || "-")}`;
+          if (chip) { chip.className = cls; chip.innerHTML = html; chip.removeAttribute("id"); }
+          else events.insertAdjacentHTML("beforeend", `<span class="${cls}">${html}</span>`);
         } else if (ev.type === "token") {
           reply += ev.text;
           bot.classList.add("raw"); bot.textContent = reply;   // raw while streaming
