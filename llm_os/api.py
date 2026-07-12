@@ -5,10 +5,16 @@ import collections
 import json
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 from pydantic import BaseModel, Field
 
 from . import config, modeltrust
@@ -26,6 +32,52 @@ from .tools.document_tools import document_tools
 from .tools.memory_tools import memory_tools
 
 app = FastAPI(title="LLM OS Kernel", version="0.2.0")
+
+# Loopback-only is a network property; it does not protect against the
+# user's own browser. A malicious webpage can DNS-rebind its domain to
+# 127.0.0.1 (the Ollama CVE-2024-28224 class) and its JavaScript becomes
+# same-origin with this kernel — able to read memory and documents, and
+# to POST /approvals to click Approve itself. Rebinding cannot forge the
+# Host header and cross-origin JS cannot forge Origin, so both are
+# checked here. "testserver" is FastAPI's TestClient default; a dotless
+# name can never be public DNS.
+_LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "::1", "testserver"}
+
+
+def _is_local(netloc_or_origin: str) -> bool:
+    try:
+        value = netloc_or_origin.strip()
+        if "//" not in value:
+            value = "//" + value
+        return urlsplit(value).hostname in _LOCAL_HOSTNAMES
+    except ValueError:
+        return False
+
+
+@app.middleware("http")
+async def _loopback_guard(request: Request, call_next):
+    host = request.headers.get("host", "")
+    origin = request.headers.get("origin")
+    if not _is_local(host) or (origin is not None and not _is_local(origin)):
+        try:
+            if _kernel is not None:
+                _kernel.audit.append(
+                    "blocked_request",
+                    {
+                        "reason": "non-local Host or Origin",
+                        "host": host[:200],
+                        "origin": (origin or "")[:200],
+                        "path": request.url.path,
+                    },
+                )
+        except Exception:
+            pass  # the block must hold even if auditing fails
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Rejected: request did not come from this machine's own loopback origin."},
+        )
+    return await call_next(request)
+
 
 _kernel: Kernel = None  # initialized on startup so tests can inject their own
 _mcp: MCPManager = None

@@ -372,7 +372,26 @@ by policy here (`anonymized_telemetry=False` in the memory client,
 `gatherUsageStats = false` in `.streamlit/config.toml`), with a
 regression test so neither can silently return.
 
-**3. Everything the system knows about you is three local folders.**
+**3. Your browser cannot be used against you.** Binding to 127.0.0.1
+stops the network — but not a malicious webpage. A site can DNS-rebind
+its domain to 127.0.0.1 (the class of attack that hit Ollama as
+CVE-2024-28224), making its JavaScript same-origin with a localhost
+service: free to read your memory and audit log, query your documents
+through `/chat`, and even POST `/approvals` to click Approve on a gated
+tool by itself. The kernel therefore rejects any request whose `Host`
+or `Origin` is not a loopback name — rebinding can't forge `Host`, and
+cross-origin JavaScript can't forge `Origin`. Prove it:
+
+```bash
+curl -s http://localhost:8000/health -H 'Host: evil.com:8000'
+# {"detail":"Rejected: request did not come from this machine's own loopback origin."}
+```
+
+Every blocked attempt is written to the audit chain as a
+`blocked_request` event — an attack against your machine becomes
+evidence on your machine.
+
+**4. Everything the system knows about you is three local folders.**
 
 ```bash
 du -sh scratchpad audit memory_store   # documents · audit log · memory
