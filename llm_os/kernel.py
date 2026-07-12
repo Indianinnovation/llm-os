@@ -37,6 +37,8 @@ Call a tool ONLY when the request needs an action or live data:
 
 Answer directly WITHOUT any tool when the user asks for definitions, explanations, opinions, comparisons, translations, creative writing, or general knowledge — even if the topic mentions numbers, calculators, disks, files, or memory. Questions like "what is X", "explain X", "translate X", "write a poem" need NO tool.
 
+When a tool takes a `content` (or body/text/message) parameter, that string IS the finished document — it is saved to disk exactly as you write it. Write the real thing: specific, substantive, complete. Never fill it with placeholders or descriptions of what the document would contain. "This is the first startup idea." is a failure; an actual startup idea, with a name and a real explanation, is the job. If the user asks for 3 items, write 3 genuinely different items.
+
 Never claim to have created a file, computed a result, or saved a memory unless a tool actually returned it.
 
 Earlier turns are context for understanding what the user MEANS (a follow-up like "and cell 5?" refers to the previous question) — they are NOT a source of data. Never answer a question about live state (numbers, files, system or network data) from an earlier reply or from memory: call the tool again for the current cell/file/value.
@@ -66,6 +68,50 @@ def _produced_content(tool: str, params: dict) -> Optional[dict]:
             title = params.get("title") or params.get("subject") or ""
             return {"title": title, "body": body, "tool": tool}
     return None
+
+
+CONTENT_KEYS = ("content", "body", "text", "message")
+
+# A small model asked to fill a `content` field treats it as a form slot,
+# not as writing: it emits the SHAPE of a document ("This is the first
+# startup idea.") and the kernel dutifully writes that to disk. These are
+# the tells. Matching one means the model described the document instead
+# of writing it — the content must be authored properly before any tool
+# touches the filesystem.
+_PLACEHOLDER_PATTERNS = [
+    r"\bthis is (?:the |a |my )?(?:first|second|third|fourth|fifth|\d+(?:st|nd|rd|th))\b",
+    r"\b(?:your|the) (?:content|text|idea|note|description|title) (?:here|goes here)\b",
+    r"\b(?:lorem ipsum|placeholder|to be (?:added|written|determined)|tbd|todo)\b",
+    r"\b(?:idea|item|point|step|section|startup idea) \d+\s*(?::|-|—)?\s*(?:description|details?|goes here)\b",
+    r"^\s*(?:insert|add|describe|write|fill in)\b.{0,50}\b(?:here|below|later)\s*[.!]?\s*$",
+    r"\[(?:your|insert|add|description|content)[^\]]{0,40}\]",
+]
+_PLACEHOLDER_RE = re.compile("|".join(_PLACEHOLDER_PATTERNS), re.I | re.M)
+
+
+def _content_key(params: dict) -> Optional[str]:
+    for key in CONTENT_KEYS:
+        if isinstance((params or {}).get(key), str):
+            return key
+    return None
+
+
+def is_placeholder_content(body: str) -> bool:
+    """True when the model described the document instead of writing it."""
+    if not body or not body.strip():
+        return True
+    if _PLACEHOLDER_RE.search(body):
+        return True
+    # Structure with no substance: headings/bullets whose bodies are all
+    # one short line. A real note has at least one line with actual prose.
+    lines = [l.strip() for l in body.splitlines() if l.strip()]
+    prose = [
+        l for l in lines
+        if not l.startswith(("#", "-", "*", ">", "|"))
+        and not re.match(r"^\d+[.)]\s", l)
+        and len(l) > 60
+    ]
+    return len(lines) >= 3 and not prose
 
 
 def _as_tool_call(data: Any) -> Optional[dict]:
@@ -448,8 +494,63 @@ class Kernel:
             pass
         return f"Done — '{outcome['tool']}' ran: {json.dumps(outcome['result'], default=str)}"
 
+    def _author_content(self, name: str, args: dict, prompt: str) -> dict:
+        """Make the model WRITE the document instead of describing it.
+
+        Routing and authoring are different jobs. In the routing call the
+        model is choosing a tool and filling a schema, and a small model
+        fills a `content` field the way it fills any field — with the
+        shape of an answer ('This is the first startup idea.'). So when
+        the content comes back as a placeholder, we ask again with no
+        tools attached: nothing to route to, nothing to fill in, only a
+        document to write. That answer replaces the parameter.
+        """
+        key = _content_key(args)
+        if key is None or not is_placeholder_content(args[key]):
+            return args
+
+        try:
+            response = self.client.chat(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are writing the FULL text of a document that will "
+                            "be saved to a file. Write the real, finished content — "
+                            "specific and substantive. Never write placeholders like "
+                            "'This is the first idea' or 'description goes here'. If "
+                            "the user asked for N items, write N genuinely different "
+                            "items, each with real detail. Output the document body "
+                            "only: no preamble, no commentary, no tool calls."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                options={"temperature": 0.7},
+            )
+        except Exception:
+            return args  # authoring is best-effort; never break the tool call
+
+        authored = (_get(_get(response, "message", {}), "content", "") or "").strip()
+        if not authored or is_placeholder_content(authored):
+            return args
+
+        self.audit.append(
+            "content_authored",
+            {
+                "tool": name,
+                "reason": "routing pass produced placeholder content",
+                "chars": len(authored),
+            },
+        )
+        return {**args, key: authored}
+
     def _execute(self, name: str, args: dict, prompt: str) -> dict:
         """Route one tool call — through the approval gate if the tool needs it."""
+        # Author before the gate: a human approving a write must see the
+        # real document, not the placeholder that would have been saved.
+        args = self._author_content(name, args, prompt)
         tool = self.registry.get(name)
         if tool is not None and tool.requires_approval and self.approvals is not None:
             record = self.approvals.request(name, args, prompt)
