@@ -43,6 +43,7 @@ in the Docker sandbox).
 
 | Panel | What it answers |
 |---|---|
+| 💬 **Chat** | Ask anything — answers **stream token by token**, and each tool call appears live as a chip with its audit id. Follow-ups work ("and cell 5?") |
 | 🔒 **Trust** | Are all 12 privacy checks passing *right now*? Has the egress sentinel seen anything leave? Is the model digest still pinned? |
 | 🧾 **Audit** | Every routing decision and tool execution, hash-chain verified — searchable, and exportable as signed-in-order JSONL for an auditor |
 | 🧠 **Memory** | Everything the system remembers about you — searchable, and **erasable** (one record, or all of it) |
@@ -64,7 +65,20 @@ confidentiality obligations. LLM OS gives them agentic automation with:
 - **Tamper-evident audit** — every routing decision and tool execution is a JSONL record hash-chained to the previous one. Edit one byte of history and `GET /audit` reports the chain broken.
 - **Flat cost** — no API tokens. A 3B model on a laptop is enough, because the model only routes.
 
-## Quickstart (native, macOS/Linux)
+## Quickstart
+
+One command — it checks Python, starts the engine **hardened**
+(loopback-only, vendor cloud features off), pulls the models, builds the
+venv, pins the model digests, runs preflight, and launches:
+
+```bash
+./install.sh
+```
+
+Then open **http://localhost:8000/console**.
+
+<details>
+<summary>Manual setup (if you prefer)</summary>
 
 Requires [Ollama](https://ollama.com) with a tool-calling model:
 
@@ -72,7 +86,7 @@ Requires [Ollama](https://ollama.com) with a tool-calling model:
 ollama pull llama3.2      # the routing model
 ollama pull all-minilm    # 46 MB embedding model for episodic memory
 
-# Run the engine hardened: loopback-only, vendor cloud features OFF
+# The engine, hardened: loopback-only, vendor cloud features OFF
 # (Ollama ships OLLAMA_NO_CLOUD=false — see "Hardened native mode" below)
 OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 ollama serve
 
@@ -81,6 +95,7 @@ pip install -r requirements.txt
 
 python scripts/launch.py
 ```
+</details>
 
 The launcher is a **preflight gate** — 12 checks that must pass before
 anything starts: no vendor update channel (desktop app not running),
@@ -139,7 +154,8 @@ exhaustion. Both published ports bind to `127.0.0.1` only.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /chat` | Route a prompt; returns the reply, the full tool trace (with audit ids), and any memories paged in |
+| `POST /chat` | Route a prompt (optionally with `history` for follow-ups); returns the reply, the full tool trace (with audit ids), and any memories paged in |
+| `POST /chat/stream` | Same, as server-sent events: `tool_start` → `tool` → `token`… → `done` |
 | `GET /health` | Kernel + engine status, MCP servers, memory records, **model pinning**, **egress-sentinel violations** |
 | `GET /tools` | Registered tools, each labelled `builtin` or `mcp:<server>` |
 | `GET /audit?n=20` | Last N audit records + hash-chain verification result |
@@ -207,7 +223,14 @@ LLM OS › Your company is called Acme Legal.   🧠 paged in 1 memory
 
 The model also gets two agentic memory tools: `remember` (save a
 durable fact) and `search_memory` (explicit lookup). Disable memory
-entirely with `LLM_OS_MEMORY=0`.
+entirely with `LLM_OS_MEMORY=0`, and browse or erase anything it holds
+from the console's Memory panel.
+
+**Memory never stores the assistant's own replies** — only what the user
+said (plus which tools answered). Archiving model output creates a
+feedback loop: a wrong answer gets recalled later *as fact*, and the
+model repeats it instead of calling the tool. We hit exactly that bug in
+testing; live data now always comes from a tool call.
 
 ## Prove it: airplane-mode verification
 

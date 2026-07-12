@@ -34,6 +34,8 @@ Call a tool ONLY when the request needs an action or live data:
 Answer directly WITHOUT any tool when the user asks for definitions, explanations, opinions, comparisons, translations, creative writing, or general knowledge — even if the topic mentions numbers, calculators, disks, files, or memory. Questions like "what is X", "explain X", "translate X", "write a poem" need NO tool.
 
 Never claim to have created a file, computed a result, or saved a memory unless a tool actually returned it.
+
+Earlier turns are context for understanding what the user MEANS (a follow-up like "and cell 5?" refers to the previous question) — they are NOT a source of data. Never answer a question about live state (numbers, files, system or network data) from an earlier reply or from memory: call the tool again for the current cell/file/value.
 """
 
 
@@ -95,17 +97,33 @@ class Kernel:
             self.audit.append("memory_error", {"stage": "recall", "error": str(exc)})
             return []
 
-    def _archive_exchange(self, prompt: str, reply: str) -> None:
-        if self.memory is None or not reply:
+    def _archive_exchange(self, prompt: str, reply: str, trace: Optional[list] = None) -> None:
+        """Archive what the USER said — never the assistant's own reply.
+
+        Storing model output as memory creates a feedback loop: a wrong
+        answer gets recalled later as if it were fact, and the model
+        repeats it instead of calling the tool. Memory holds the user's
+        statements and requests; live data always comes from tools.
+        """
+        if self.memory is None or not prompt.strip():
             return
+        tools_used = sorted({t["tool"] for t in (trace or [])})
+        note = f"User said: {prompt.strip()}"
+        if tools_used:
+            note += f"\n(answered using: {', '.join(tools_used)})"
         try:
-            self.memory.archive(f"User said: {prompt}\nAssistant replied: {reply}")
+            self.memory.archive(note)
         except Exception as exc:
             self.audit.append("memory_error", {"stage": "archive", "error": str(exc)})
 
-    def handle(self, prompt: str) -> dict:
-        """Route one user prompt; returns reply text plus the full trace."""
-        started = time.time()
+    def _build_messages(self, prompt: str, history: Optional[list] = None) -> tuple:
+        """System prompt + paged-in memories + recent turns + this prompt.
+
+        `history` is the client's recent conversation ([{role, content}, …]);
+        the last MAX_HISTORY_TURNS exchanges are included so follow-ups like
+        "and cell 5?" or "summarize that" work. Only text is replayed — never
+        past tool payloads, which would bloat context for a small model.
+        """
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
         memories = self._page_in_memories(prompt)
@@ -115,12 +133,30 @@ class Kernel:
                 {
                     "role": "system",
                     "content": (
-                        "Possibly relevant memories from previous sessions "
-                        "(ignore any that do not apply):\n" + recalled
+                        "Notes from PAST conversations. They record what was said "
+                        "before and MAY BE OUT OF DATE — including any numbers or "
+                        "system state in them. Use them only to understand the "
+                        "user's context and preferences. NEVER answer a question "
+                        "about current state (values, files, alarms, network data) "
+                        "from these notes: call the tool and use its result.\n"
+                        + recalled
                     ),
                 }
             )
+
+        for turn in (history or [])[-(config.MAX_HISTORY_TURNS * 2):]:
+            role = turn.get("role")
+            content = (turn.get("content") or "").strip()
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content[:4000]})
+
         messages.append({"role": "user", "content": prompt})
+        return messages, memories
+
+    def handle(self, prompt: str, history: Optional[list] = None) -> dict:
+        """Route one user prompt; returns reply text plus the full trace."""
+        started = time.time()
+        messages, memories = self._build_messages(prompt, history)
         trace = []
 
         for _ in range(config.MAX_TOOL_CALLS):
@@ -152,7 +188,7 @@ class Kernel:
                         "memories_recalled": len(memories),
                     },
                 )
-                self._archive_exchange(prompt, reply)
+                self._archive_exchange(prompt, reply, trace)
                 return self._result(reply, trace, memories, started)
 
             messages.append(
@@ -193,6 +229,104 @@ class Kernel:
         return self._result(
             "I hit the tool-call limit for a single request.", trace, memories, started
         )
+
+    def stream(self, prompt: str, history: Optional[list] = None):
+        """Same routing as handle(), but yields events as they happen:
+
+            {"type": "memories", ...}   memories paged in (once, if any)
+            {"type": "tool", ...}       a tool was executed (name, status, audit id)
+            {"type": "token", "text"}   a chunk of the final answer
+            {"type": "done", ...}       reply text + trace + duration
+
+        Local models are slow; watching the answer appear is the difference
+        between "thinking…" and a usable product.
+        """
+        started = time.time()
+        messages, memories = self._build_messages(prompt, history)
+        trace = []
+        if memories:
+            yield {"type": "memories", "memories": memories}
+
+        for _ in range(config.MAX_TOOL_CALLS):
+            # Non-streamed pass first: we must know whether the model wants a
+            # tool before we can stream anything to the user.
+            response = self.client.chat(
+                model=self.model,
+                messages=messages,
+                tools=self.registry.specs(),
+                options={"temperature": 0},
+            )
+            message = _get(response, "message", {})
+            tool_calls = _get(message, "tool_calls") or []
+            if not tool_calls:
+                recovered = _parse_textual_tool_call(_get(message, "content"))
+                if recovered and self.registry.get(recovered["function"]["name"]):
+                    tool_calls = [recovered]
+                    message = {"content": "", "tool_calls": tool_calls}
+
+            if not tool_calls:
+                reply = (_get(message, "content") or "").strip()
+                if not trace:
+                    # No tools involved: re-run streamed so the user sees tokens.
+                    reply = ""
+                    for chunk in self.client.chat(
+                        model=self.model, messages=messages,
+                        options={"temperature": 0}, stream=True,
+                    ):
+                        piece = _get(_get(chunk, "message", {}), "content") or ""
+                        if piece:
+                            reply += piece
+                            yield {"type": "token", "text": piece}
+                else:
+                    for piece in reply.split(" "):
+                        yield {"type": "token", "text": piece + " "}
+                self.audit.append(
+                    "chat" if not trace else "chat_after_tools",
+                    {
+                        "prompt": prompt,
+                        "tools_used": [t["tool"] for t in trace],
+                        "memories_recalled": len(memories),
+                    },
+                )
+                self._archive_exchange(prompt, reply, trace)
+                yield {"type": "done", **self._result(reply.strip(), trace, memories, started)}
+                return
+
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": _get(message, "content") or "",
+                    "tool_calls": [
+                        {"function": {
+                            "name": _get(_get(tc, "function", {}), "name"),
+                            "arguments": _get(_get(tc, "function", {}), "arguments"),
+                        }}
+                        for tc in tool_calls
+                    ],
+                }
+            )
+            for call in tool_calls:
+                function = _get(call, "function", {})
+                name = _get(function, "name")
+                args = _get(function, "arguments") or {}
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
+                yield {"type": "tool_start", "tool": name, "params": args}
+                outcome = self._execute(name, args, prompt)
+                trace.append(outcome)
+                yield {"type": "tool", **outcome}
+                messages.append(
+                    {"role": "tool", "content": json.dumps(outcome["result"], default=str)}
+                )
+
+        yield {
+            "type": "done",
+            **self._result("I hit the tool-call limit for a single request.",
+                           trace, memories, started),
+        }
 
     def _execute(self, name: str, args: dict, prompt: str) -> dict:
         tool = self.registry.get(name)

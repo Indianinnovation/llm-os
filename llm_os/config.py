@@ -26,3 +26,6 @@ KERNEL_URL = os.environ.get("KERNEL_URL", "http://localhost:8000")
 
 # Hard ceiling on agentic tool iterations per request.
 MAX_TOOL_CALLS = int(os.environ.get("LLM_OS_MAX_TOOL_CALLS", "5"))
+
+# Recent conversation turns replayed for follow-ups ("and cell 5?").
+MAX_HISTORY_TURNS = int(os.environ.get("LLM_OS_HISTORY_TURNS", "6"))

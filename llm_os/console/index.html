@@ -77,6 +77,24 @@
   .row { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
   .muted { color: var(--text-2); }
   .bar { height: 6px; border-radius: 3px; background: var(--accent); }
+  /* chat */
+  #thread { display: flex; flex-direction: column; gap: 12px; min-height: 220px; }
+  .msg { max-width: 780px; padding: 11px 15px; border-radius: 12px; border: 1px solid var(--line); white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--surface-2); }
+  .msg.bot { background: transparent; }
+  .msg.bot.streaming::after { content: "▌"; opacity: .6; }
+  .toolev {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 12px;
+    color: var(--text-2); border: 1px solid var(--line); border-radius: 999px;
+    padding: 3px 11px; margin: 2px 6px 2px 0; font-family: var(--mono);
+  }
+  .toolev.run { border-color: var(--accent); color: var(--accent); }
+  .toolev.err { border-color: var(--warn); color: var(--warn); }
+  .chip {
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--text-2);
+    border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--text); }
 </style>
 </head>
 <body>
@@ -88,7 +106,8 @@
 </header>
 
 <nav id="nav">
-  <button data-view="trust" aria-selected="true">🔒 Trust</button>
+  <button data-view="chat" aria-selected="true">💬 Chat</button>
+  <button data-view="trust" aria-selected="false">🔒 Trust</button>
   <button data-view="audit" aria-selected="false">🧾 Audit</button>
   <button data-view="memory" aria-selected="false">🧠 Memory</button>
   <button data-view="tools" aria-selected="false">🔧 Tools</button>
@@ -96,7 +115,22 @@
 </nav>
 
 <main>
-  <section id="trust" class="active">
+  <section id="chat" class="active">
+    <h2>Chat</h2>
+    <p class="hint">The model routes; sandboxed tools execute. Every call is
+      hash-chained into the audit log — the ids below are clickable proof.</p>
+    <div id="thread"></div>
+    <div class="row" style="margin-top:16px">
+      <input type="search" id="prompt" style="flex:1;min-width:320px"
+             placeholder="Ask LLM OS…  (e.g. What is 4539 × 23?)"
+             onkeydown="if(event.key==='Enter')send()">
+      <button class="action" id="sendBtn" onclick="send()">Send</button>
+      <button class="action" onclick="newChat()">New chat</button>
+    </div>
+    <div id="suggest" class="row" style="margin-top:4px"></div>
+  </section>
+
+  <section id="trust">
     <h2>Trust posture</h2>
     <p class="hint">Live checks — the same gate the launcher enforces before startup.
       A red check means the privacy guarantee is not currently held.</p>
@@ -173,8 +207,93 @@ async function api(path, opts) {
 document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("#nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === b.dataset.view));
-  ({ trust: loadTrust, audit: loadAudit, memory: loadMemory, tools: loadTools, models: loadModels })[b.dataset.view]();
+  ({ chat: () => $("prompt").focus(), trust: loadTrust, audit: loadAudit,
+     memory: loadMemory, tools: loadTools, models: loadModels })[b.dataset.view]();
 });
+
+/* ── Chat: streaming + multi-turn ─────────────────────────────────────── */
+let history = [];          // [{role, content}] — replayed so follow-ups work
+let busy = false;
+
+const SUGGESTIONS = [
+  "What is 4539 multiplied by 23?",
+  "How big is my Downloads folder?",
+  "Write a markdown note called ideas with 3 startup ideas",
+  "What is an LLM OS?",
+];
+$("suggest").innerHTML = SUGGESTIONS.map(s =>
+  `<button class="chip" onclick="ask('${esc(s).replace(/'/g, "\\'")}')">${esc(s)}</button>`).join("");
+
+function ask(text) { $("prompt").value = text; send(); }
+function newChat() { history = []; $("thread").innerHTML = ""; $("prompt").focus(); }
+
+function bubble(cls, html) {
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.innerHTML = html;
+  $("thread").appendChild(div);
+  div.scrollIntoView({ block: "end" });
+  return div;
+}
+
+async function send() {
+  const prompt = $("prompt").value.trim();
+  if (!prompt || busy) return;
+  busy = true; $("sendBtn").disabled = true; $("prompt").value = "";
+
+  bubble("user", esc(prompt));
+  const events = document.createElement("div");
+  $("thread").appendChild(events);
+  const bot = bubble("bot streaming", "");
+  let reply = "";
+
+  const response = await fetch("/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, history }),
+  });
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop();
+    for (const part of parts) {
+      if (!part.startsWith("data: ")) continue;
+      const ev = JSON.parse(part.slice(6));
+      if (ev.type === "memories") {
+        events.insertAdjacentHTML("beforeend",
+          `<span class="toolev">🧠 paged in ${ev.memories.length} memory(ies)</span>`);
+      } else if (ev.type === "tool_start") {
+        events.insertAdjacentHTML("beforeend",
+          `<span class="toolev run" id="ev-${esc(ev.tool)}">⚙ ${esc(ev.tool)} — running…</span>`);
+      } else if (ev.type === "tool") {
+        const chip = document.getElementById("ev-" + ev.tool);
+        const ok = ev.status === "success";
+        const html = `${ok ? "⚙" : "⚠"} ${esc(ev.tool)} · audit ${esc(ev.audit_id || "-")}`;
+        if (chip) { chip.className = "toolev" + (ok ? "" : " err"); chip.innerHTML = html; chip.removeAttribute("id"); }
+        else events.insertAdjacentHTML("beforeend", `<span class="toolev${ok ? "" : " err"}">${html}</span>`);
+      } else if (ev.type === "token") {
+        reply += ev.text;
+        bot.textContent = reply;
+        bot.scrollIntoView({ block: "end" });
+      } else if (ev.type === "done") {
+        reply = ev.reply || reply;
+        bot.textContent = reply;
+      } else if (ev.type === "error") {
+        bot.innerHTML = `<span style="color:var(--crit)">Kernel error: ${esc(ev.error)}</span>`;
+      }
+    }
+  }
+  bot.classList.remove("streaming");
+  history.push({ role: "user", content: prompt }, { role: "assistant", content: reply });
+  history = history.slice(-12);
+  busy = false; $("sendBtn").disabled = false; $("prompt").focus();
+}
 
 async function loadHeader() {
   try {
@@ -314,7 +433,8 @@ async function loadModels() {
   }).join("");
 }
 
-loadTrust();
+loadHeader();
+$("prompt").focus();
 setInterval(loadHeader, 10000);
 </script>
 </body>

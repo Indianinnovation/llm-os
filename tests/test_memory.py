@@ -104,11 +104,18 @@ def test_kernel_archives_and_pages_in_memories(tmp_path, memory):
     assert "Acme Legal" in result["memories"][0]["text"]
 
     sent_messages = client.calls[0]["messages"]
-    assert any(
-        "Possibly relevant memories" in m["content"]
-        for m in sent_messages
-        if m["role"] == "system"
+    memory_block = next(
+        (
+            m["content"]
+            for m in sent_messages
+            if m["role"] == "system" and "PAST conversations" in m["content"]
+        ),
+        None,
     )
+    assert memory_block is not None
+    # Memories must be framed as possibly-stale context, never as live data.
+    assert "MAY BE OUT OF DATE" in memory_block
+    assert "Acme Legal" in memory_block
 
 
 def test_kernel_without_memory_still_works(tmp_path):

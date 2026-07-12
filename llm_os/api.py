@@ -2,12 +2,13 @@
 desktop app) goes through this single routed entry point."""
 
 import collections
+import json
 import time
 from pathlib import Path
 
 import requests
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import config, modeltrust
@@ -73,16 +74,44 @@ def _shutdown() -> None:
         _mcp.shutdown()
 
 
+class Turn(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=8000)
+    history: list[Turn] = Field(default_factory=list)
 
 
 @app.post("/chat")
 def chat(request: ChatRequest) -> dict:
     try:
-        return _kernel.handle(request.prompt)
+        return _kernel.handle(
+            request.prompt, [t.model_dump() for t in request.history]
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Kernel error: {exc}")
+
+
+@app.post("/chat/stream")
+def chat_stream(request: ChatRequest) -> StreamingResponse:
+    """Server-sent events: tool calls as they happen, then the answer,
+    token by token. A local model is slow — show the work."""
+    history = [t.model_dump() for t in request.history]
+
+    def events():
+        try:
+            for event in _kernel.stream(request.prompt, history):
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/health")
