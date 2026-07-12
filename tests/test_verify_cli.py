@@ -93,4 +93,4 @@ def test_cli_does_not_import_the_kernel():
             imported.add(node.module.split(".")[0])
 
     assert "llm_os" not in imported
-    assert imported <= {"argparse", "hashlib", "json", "sys", "pathlib"}
+    assert imported <= {"argparse", "hashlib", "hmac", "json", "sys", "pathlib"}

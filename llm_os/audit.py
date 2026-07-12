@@ -15,7 +15,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import portalock
+from . import config, portalock, redact
 
 GENESIS_HASH = "0" * 64
 _TAIL_BYTES = 8192  # enough to hold the last record
@@ -49,11 +49,21 @@ def _last_hash_of(handle) -> str:
 
 
 class AuditLog:
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, content_mode: str = None):
         self.path = Path(directory) / "audit.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.touch(exist_ok=True)
         self._lock = threading.Lock()  # threads within this process
+        # A tamper-evident log cannot be redacted afterwards — that is the
+        # whole point of it. So content is redacted on the way IN, before it
+        # is hashed: the chain commits to what is written, and what is
+        # written contains no prose. See llm_os/redact.py.
+        self.content_mode = content_mode or config.AUDIT_CONTENT
+        self.salt = (
+            redact.load_or_create_salt(self.path.parent)
+            if self.content_mode == redact.REDACTED
+            else None
+        )
 
     def append(self, event_type: str, payload: dict) -> str:
         """Append an event under an exclusive file lock; returns the id.
@@ -61,6 +71,8 @@ class AuditLog:
         The lock plus the read-tip-from-disk step make appends safe across
         processes, so the chain stays linear no matter who is writing.
         """
+        if self.salt is not None:
+            payload = redact.redact(payload, self.salt)
         with self._lock:
             with self.path.open("r+") as f:
                 portalock.lock(f)

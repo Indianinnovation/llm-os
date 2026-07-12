@@ -19,6 +19,7 @@ Exit code 0 = intact, 1 = broken, 2 = unusable file.
 
 import argparse
 import hashlib
+import hmac
 import json
 import sys
 from pathlib import Path
@@ -103,13 +104,65 @@ def verify(path: Path) -> int:
     return 0
 
 
+def prove(path: Path, text: str, salt_path: Path) -> int:
+    """Prove a specific prompt produced records in this log.
+
+    Redacted logs hold a commitment — HMAC(salt, text) — instead of the text.
+    Given the salt and a candidate string, anyone can re-derive the commitment
+    and see which records it matches. The log stays unreadable; the fact stays
+    provable. Destroy the salt and this becomes impossible forever, which is
+    how you erase content from a log you are not permitted to rewrite.
+    """
+    try:
+        salt = salt_path.read_bytes()
+    except OSError as exc:
+        print(f"{RED}cannot read salt {salt_path}: {exc}{RESET}")
+        print(f"{DIM}(without it, commitments cannot be checked — this is by design "
+              f"once the salt is destroyed){RESET}")
+        return 2
+
+    commitment = hmac.new(salt, text.encode("utf-8"), hashlib.sha256).hexdigest()
+    print(f"\n{BOLD}🔎 Searching {path} for a commitment to:{RESET}")
+    print(f'{DIM}   "{text[:70]}"{RESET}')
+    print(f"{DIM}   HMAC-SHA256 = {commitment[:48]}…{RESET}\n")
+
+    hits = 0
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        if not line.strip():
+            continue
+        if commitment in line:
+            record = json.loads(line)
+            fields = [k for k, v in record.items()
+                      if isinstance(v, dict) and v.get("commitment") == commitment]
+            where = ", ".join(fields) if fields else "nested field"
+            print(f"{GREEN}  ✓ record {number} ({record.get('event')}) — in {where}{RESET}")
+            print(f"{DIM}      ts {record.get('ts')} · id {record.get('id')}{RESET}")
+            hits += 1
+
+    if hits:
+        print(f"\n{GREEN}{BOLD}  PROVEN: this exact text produced {hits} record(s).{RESET}")
+        print(f"{DIM}  The log never stored the words — only a commitment to them.{RESET}\n")
+        return 0
+    print(f"\n{YELLOW}  No record commits to that text.{RESET}\n")
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("logfile", nargs="?", default="audit/audit.jsonl",
                         help="the JSONL audit log (default: audit/audit.jsonl)")
+    parser.add_argument("--match", metavar="TEXT",
+                        help="prove TEXT produced records in this log (needs the salt)")
+    parser.add_argument("--salt", metavar="PATH",
+                        help="the commitment salt (default: alongside the log, .salt)")
     args = parser.parse_args()
-    return verify(Path(args.logfile))
+
+    log_path = Path(args.logfile)
+    if args.match:
+        salt_path = Path(args.salt) if args.salt else log_path.parent / ".salt"
+        return prove(log_path, args.match, salt_path)
+    return verify(log_path)
 
 
 if __name__ == "__main__":

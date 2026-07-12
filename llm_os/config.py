@@ -60,6 +60,14 @@ APPROVAL_TOOLS = [
 # answer built on matches carries their citations.
 MIN_RELEVANCE = float(os.environ.get("LLM_OS_MIN_RELEVANCE", "0.25"))
 
+# What the audit log retains. "redacted" (default) stores an HMAC commitment
+# to every prompt, document body and excerpt instead of the words themselves:
+# the chain still proves what happened and that nothing was altered, and a
+# specific prompt can still be PROVEN to have produced a record — but the log
+# holds no readable content, and destroying audit/.salt makes it permanently
+# unlinkable (crypto-erasure). Set to "plaintext" for full forensic detail.
+AUDIT_CONTENT = os.environ.get("LLM_OS_AUDIT_CONTENT", "redacted")
+
 # MCP server definitions, Claude-Desktop-compatible {"mcpServers": {...}}.
 MCP_CONFIG = Path(os.environ.get("MCP_CONFIG", BASE_DIR / "mcp_servers.json"))
 

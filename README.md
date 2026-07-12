@@ -376,6 +376,49 @@ connections even with the radio off and will fool naive probes; ours
 learned that the hard way. A markdown report is written to
 `scratchpad/airplane_report.md`.
 
+## Erasable, and still tamper-evident
+
+A hash chain and a right to erasure pull in opposite directions: the property
+that makes the log trustworthy — no record can be altered or removed — is
+exactly what stops you deleting a sentence someone asked you to forget.
+
+So the words are never written down. Instead of your prompt, the chain stores
+a **commitment** to it (HMAC-SHA256 under a per-install salt). The log holds
+no readable content — not your prompts, not your document bodies, not the
+excerpts retrieved from your files:
+
+```bash
+grep -c "ZORPTHAX\|Vandelay\|250,000" audit/audit.jsonl
+# 0
+```
+
+What an auditor needs survives: which tool ran, when, whether it succeeded,
+who approved it, and an unbroken chain. And a specific prompt can still be
+**proven** to have produced a record:
+
+```bash
+python scripts/verify_audit.py audit/audit.jsonl --match "my exact prompt"
+#   ✓ record 5 (tool_execution) — in prompt
+#   PROVEN: this exact text produced 2 record(s).
+#   The log never stored the words — only a commitment to them.
+```
+
+Then destroy `audit/.salt` and that link is gone forever — for us too:
+
+```bash
+rm audit/.salt
+python scripts/verify_audit.py audit/audit.jsonl --match "my exact prompt"
+#   cannot read salt — commitments can no longer be checked (by design)
+python scripts/verify_audit.py audit/audit.jsonl
+#   ✓ CHAIN INTACT — all 8 records verify.
+```
+
+**The content is unrecoverable; the history is still provably intact.** That
+is crypto-erasure, and it is the only honest way to answer a deletion request
+against a log you are not permitted to rewrite. Set
+`LLM_OS_AUDIT_CONTENT=plaintext` if you would rather keep full forensic
+detail.
+
 ## Prove the log: the standalone auditor
 
 The audit chain is only worth something if someone other than the kernel can

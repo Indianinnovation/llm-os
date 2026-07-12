@@ -144,7 +144,9 @@ def test_tampered_audit_log_fails_verification(audit, tmp_path):
         audit,
     )
     kernel.handle("2+2?")
-    # An attacker edits history: change the recorded expression.
-    content = audit.path.read_text().replace("2+2", "9+9")
+    # An attacker edits history. Content is redacted, so there is no prose to
+    # rewrite — they go for what IS still readable: the outcome of the call.
+    content = audit.path.read_text().replace('"status": "success"', '"status": "denied"')
+    assert '"denied"' in content, "the tamper must actually change the log"
     audit.path.write_text(content)
     assert audit.verify_chain() is False
