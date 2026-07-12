@@ -178,3 +178,77 @@ def test_gate_can_be_opened_deliberately(monkeypatch):
     assert fresh.APPROVAL_TOOLS == []
     monkeypatch.undo()
     importlib.reload(fresh)
+
+
+# ── the model must not be able to narrate a blocked action ──────────────────
+
+DISOBEDIENT = (
+    "# ideas\n\n## Startup Idea 1: AI-Powered Project Management Tool\n"
+    "Develop an AI-powered project management tool for teams.\n"
+)
+
+
+def _gated_kernel(tmp_path, monkeypatch, final_reply):
+    monkeypatch.setattr(config, "SCRATCHPAD_DIR", tmp_path)
+    registry = default_registry()
+    registry.require_approval("write_markdown")
+    return Kernel(
+        registry=registry,
+        client=FakeClient(
+            [
+                tool_call_response("write_markdown", {"filename": "ideas", "title": "ideas", "content": REAL_NOTE}),
+                text_response(final_reply),
+            ]
+        ),
+        model="fake",
+        audit=AuditLog(tmp_path),
+        approvals=ApprovalStore(tmp_path / "approvals.json"),
+    )
+
+
+def test_model_cannot_print_the_document_when_the_write_is_blocked(tmp_path, monkeypatch):
+    # The model ignores the BLOCKED instruction and prints the finished note.
+    # The user would read that and believe it was saved. It was not.
+    kernel = _gated_kernel(tmp_path, monkeypatch, DISOBEDIENT)
+    outcome = kernel.handle("Write a markdown note called ideas with 3 startup ideas")
+
+    assert "AI-Powered Project Management Tool" not in outcome["reply"]
+    assert "Waiting for your approval" in outcome["reply"]
+    assert "nothing has been created" in outcome["reply"].lower()
+    assert not (tmp_path / "ideas.md").exists()
+
+
+def test_blocked_reply_names_the_approval(tmp_path, monkeypatch):
+    kernel = _gated_kernel(tmp_path, monkeypatch, "Done! I saved it for you.")
+    outcome = kernel.handle("Write a markdown note called ideas")
+    approval_id = outcome["trace"][0]["approval_id"]
+    # A false 'Done!' never reaches the user; the real state does.
+    assert "Done!" not in outcome["reply"]
+    assert approval_id in outcome["reply"]
+    assert "write_markdown" in outcome["reply"]
+
+
+def test_streamed_tokens_never_leak_the_blocked_document(tmp_path, monkeypatch):
+    kernel = _gated_kernel(tmp_path, monkeypatch, DISOBEDIENT)
+    streamed = "".join(
+        ev["text"]
+        for ev in kernel.stream("Write a markdown note called ideas")
+        if ev["type"] == "token"
+    )
+    # What the user watches appear on screen, token by token.
+    assert "AI-Powered Project Management Tool" not in streamed
+    assert "Waiting for your approval" in streamed
+
+
+def test_ungated_success_is_still_narrated_by_the_model(tmp_path, monkeypatch):
+    # The override must apply ONLY when something is pending.
+    monkeypatch.setattr(config, "SCRATCHPAD_DIR", tmp_path)
+    kernel = _kernel(
+        tmp_path,
+        [
+            tool_call_response("write_markdown", {"filename": "ideas", "title": "ideas", "content": REAL_NOTE}),
+            text_response("Saved ideas.md with three ideas."),
+        ],
+    )
+    outcome = kernel.handle("Write a markdown note called ideas")
+    assert outcome["reply"] == "Saved ideas.md with three ideas."

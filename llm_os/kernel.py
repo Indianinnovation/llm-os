@@ -70,6 +70,34 @@ def _produced_content(tool: str, params: dict) -> Optional[dict]:
     return None
 
 
+def blocked_reply(trace: list) -> Optional[str]:
+    """The reply to show when a tool is waiting on a human.
+
+    The gate itself is mechanical, so its *message* must be too. Asked to
+    write a note, a small model will happily print the finished document
+    into the chat even though the write was blocked — the user then reads
+    a completed note and reasonably believes it was saved. Nothing was.
+    So when anything is pending we do not let the model narrate the
+    outcome at all: the kernel states it, from the trace, deterministically.
+    """
+    pending = [t for t in (trace or []) if t.get("status") == "awaiting_approval"]
+    if not pending:
+        return None
+    lines = [
+        "**Waiting for your approval — nothing has run, and nothing has been "
+        "created, written, or changed.**",
+        "",
+    ]
+    for call in pending:
+        lines.append(f"- `{call['tool']}` — approval `{call.get('approval_id', '?')}`")
+    lines.append("")
+    lines.append(
+        "Review it above and choose **Approve & run** or **Reject**. "
+        "The content shown is a *preview*: it exists only in this request."
+    )
+    return "\n".join(lines)
+
+
 CONTENT_KEYS = ("content", "body", "text", "message")
 
 # A small model asked to fill a `content` field treats it as a form slot,
@@ -372,7 +400,16 @@ class Kernel:
 
             if not tool_calls:
                 reply = (_get(message, "content") or "").strip()
-                if not trace:
+                held = blocked_reply(trace)
+                if held:
+                    # Something is waiting on a human. The model does not get
+                    # to narrate this — left to itself it prints the finished
+                    # document and the user believes it was saved. Stream the
+                    # kernel's own statement of fact instead.
+                    reply = held
+                    for piece in held.split(" "):
+                        yield {"type": "token", "text": piece + " "}
+                elif not trace:
                     # No tools involved: re-run streamed so the user sees tokens.
                     reply = ""
                     for chunk in self.client.chat(
@@ -620,7 +657,7 @@ class Kernel:
         self, reply: str, trace: list, memories: list, started: float
     ) -> dict:
         return {
-            "reply": reply,
+            "reply": blocked_reply(trace) or reply,
             "trace": trace,
             "memories": memories,
             "model": self.model,

@@ -989,18 +989,35 @@ async function loadApprovals() {
   let d;
   try { d = await api("/approvals"); } catch { return; }
   const pending = d.pending || [];
-  $("approvalBar").innerHTML = pending.length ? pending.map(p => `
-    <div class="verdict bad" style="margin:14px 28px 0;padding:14px 16px">
-      <div class="mark">✋</div>
-      <div style="flex:1">
-        <h3 style="font-size:14.5px">${esc(p.tool)} needs your approval</h3>
-        <p class="mono" style="font-size:12px">${esc(JSON.stringify(p.params).slice(0, 90))}</p>
+  $("approvalBar").innerHTML = pending.length ? pending.map(p => {
+    // Show WHAT would be written, not a truncated JSON blob — a person
+    // cannot authorize what they cannot read. But frame it as a preview:
+    // this document does not exist yet, and saying so is the whole job.
+    const key = ["content", "body", "text", "message"].find(k => typeof p.params?.[k] === "string");
+    const preview = key ? p.params[key] : "";
+    const rest = Object.fromEntries(Object.entries(p.params || {}).filter(([k]) => k !== key));
+    return `
+    <div class="verdict bad" style="margin:14px 28px 0;padding:14px 16px;display:block">
+      <div class="row" style="align-items:flex-start;gap:13px">
+        <div class="mark">✋</div>
+        <div style="flex:1">
+          <h3 style="font-size:14.5px">${esc(p.tool)} needs your approval</h3>
+          <p class="sub" style="margin:2px 0 0">
+            Nothing has run. This is a <b>preview</b> — it has not been saved.
+          </p>
+          <p class="mono" style="font-size:12px;margin:6px 0 0">${esc(JSON.stringify(rest))}</p>
+        </div>
+        <div class="row">
+          <button class="btn primary" onclick="decide('${esc(p.id)}','approve')">Approve &amp; run</button>
+          <button class="btn danger" onclick="decide('${esc(p.id)}','reject')">Reject</button>
+        </div>
       </div>
-      <div class="row">
-        <button class="btn primary" onclick="decide('${esc(p.id)}','approve')">Approve &amp; run</button>
-        <button class="btn danger" onclick="decide('${esc(p.id)}','reject')">Reject</button>
-      </div>
-    </div>`).join("") : "";
+      ${preview ? `<div class="artifact" style="margin-top:12px">
+        <div class="artifact-head">📄 not yet saved — ${esc(p.params.title || p.tool)}</div>
+        <div class="artifact-body">${md(preview)}</div>
+      </div>` : ""}
+    </div>`;
+  }).join("") : "";
 }
 async function decide(id, decision) {
   const res = await fetch(`/approvals/${id}`, {
