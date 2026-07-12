@@ -19,6 +19,7 @@ from .documents import create_index
 from .kernel import Kernel
 from .mcp_client import MCPManager
 from .memory import create_memory
+from .scheduler import ScheduleStore, Scheduler
 from .sentinel import EgressSentinel
 from .tools import default_registry
 from .tools.document_tools import document_tools
@@ -31,6 +32,8 @@ _mcp: MCPManager = None
 _sentinel: EgressSentinel = None
 _docs = None
 _convos: ConversationStore = None
+_schedules: ScheduleStore = None
+_scheduler: Scheduler = None
 
 
 def _verify_model_or_die(audit: AuditLog) -> None:
@@ -50,7 +53,7 @@ def _verify_model_or_die(audit: AuditLog) -> None:
 
 @app.on_event("startup")
 def _startup() -> None:
-    global _kernel, _mcp, _sentinel, _docs, _convos
+    global _kernel, _mcp, _sentinel, _docs, _convos, _schedules, _scheduler
     audit = AuditLog(config.AUDIT_DIR)
     _verify_model_or_die(audit)
     _sentinel = EgressSentinel(audit)
@@ -88,9 +91,19 @@ def _startup() -> None:
     _kernel = Kernel(registry=registry, memory=memory, audit=audit,
                      approvals=approvals)
 
+    # Scheduled agents: the OS working while you sleep. Jobs run through
+    # this same kernel, so gated tools still need a human — a 3am job
+    # cannot authorize itself.
+    globals()["_schedules"] = ScheduleStore(config.SCHEDULES_FILE)
+    globals()["_scheduler"] = Scheduler(_schedules, _kernel, audit)
+    if config.SCHEDULER_ENABLED:
+        _scheduler.start()
+
 
 @app.on_event("shutdown")
 def _shutdown() -> None:
+    if _scheduler is not None:
+        _scheduler.stop()
     if _sentinel is not None:
         _sentinel.stop()
     if _mcp is not None:
@@ -200,6 +213,68 @@ def decide_approval(approval_id: str, decision: Decision) -> dict:
         return {"approval_id": approval_id, "status": record["status"],
                 "executed": False}
     return _kernel.execute_approved(approval_id)
+
+
+# ── scheduled agents: work that happens while you sleep ─────────────────────
+
+class NewSchedule(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    prompt: str = Field(..., min_length=3, max_length=2000)
+    every_minutes: int = Field(0, ge=0, le=10080)
+    daily_at: str = Field("", pattern=r"^$|^([01]\d|2[0-3]):[0-5]\d$")
+
+
+@app.get("/schedules")
+def schedules() -> dict:
+    return {
+        "enabled": config.SCHEDULER_ENABLED,
+        "schedules": _schedules.list() if _schedules else [],
+    }
+
+
+@app.post("/schedules")
+def create_schedule(request: NewSchedule) -> dict:
+    if _schedules is None:
+        raise HTTPException(400, "Scheduler is not configured.")
+    if not request.every_minutes and not request.daily_at:
+        raise HTTPException(400, "Give a cadence: every_minutes or daily_at (HH:MM).")
+    schedule = _schedules.create(
+        request.name, request.prompt, request.every_minutes, request.daily_at
+    )
+    _kernel.audit.append("schedule_created", {
+        "job_id": schedule["id"], "name": schedule["name"],
+        "prompt": schedule["prompt"], "next_run": schedule["next_run"],
+    })
+    return schedule
+
+
+@app.post("/schedules/{job_id}/run")
+def run_schedule_now(job_id: str) -> dict:
+    if _scheduler is None:
+        raise HTTPException(400, "Scheduler is not configured.")
+    result = _scheduler.run_job(job_id, trigger="manual")
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+    return result
+
+
+@app.post("/schedules/{job_id}/toggle")
+def toggle_schedule(job_id: str) -> dict:
+    schedule = _schedules.get(job_id) if _schedules else None
+    if schedule is None:
+        raise HTTPException(404, "No such schedule.")
+    updated = _schedules.update(job_id, enabled=not schedule["enabled"])
+    _kernel.audit.append("schedule_toggled",
+                         {"job_id": job_id, "enabled": updated["enabled"]})
+    return updated
+
+
+@app.delete("/schedules/{job_id}")
+def delete_schedule(job_id: str) -> dict:
+    if _schedules is None or not _schedules.delete(job_id):
+        raise HTTPException(404, "No such schedule.")
+    _kernel.audit.append("schedule_deleted", {"job_id": job_id})
+    return {"deleted": job_id}
 
 
 # ── documents: answer from the user's own files, with citations ─────────────

@@ -48,6 +48,7 @@ in the Docker sandbox).
 | Panel | What it answers |
 |---|---|
 | 💬 **Chat** | Ask anything — answers **stream token by token**, each tool call appears live as a chip with its audit id, follow-ups work, and **chats are saved** (they survive a refresh, a restart, a reboot) |
+| ⏰ **Schedules** | Agents that run on their own — "every morning, check disk usage and report" — with runs, next-run times, and any approvals they are waiting on |
 | 📄 **Documents** | Drop your files in `documents/` and ask about them — answers come back **with citations** (`sample-nda.md (chunk 1/1)`), indexed and read entirely on this machine |
 | 🔒 **Trust** | Are all 12 privacy checks passing *right now*? Has the egress sentinel seen anything leave? Is the model digest still pinned? |
 | 🧾 **Audit** | Every routing decision and tool execution, hash-chain verified — searchable, and exportable as signed-in-order JSONL for an auditor |
@@ -94,6 +95,26 @@ The request, the decision, the approver, and the execution each become
 records in the audit chain. This is what makes "give the agent write access"
 safe — and it's how you'd gate `send_email` or `execute_change` in your own
 MCP server.
+
+## Scheduled agents — work that happens while you sleep
+
+> *"Every morning at 08:00, check disk usage and write me a report."*
+
+Create a job in the console's **Schedules** panel (or `POST /schedules`), and
+the kernel runs it on its own — same tools, same memory, same hash-chained
+audit trail as if you had typed it.
+
+**And the same approval gates.** A 3am job that wants to touch a gated tool
+does **not** get to authorize itself: it leaves a pending request and a human
+decides in the morning.
+
+```
+Nightly report   every 60m   next 01:00   ✋ awaiting approval
+Morning check    daily 08:00 next 08:00   ✓ get_disk_usage
+```
+
+That is what earns the "OS" in the name: it does work for you, and it still
+cannot do anything you did not permit.
 
 ## Why
 
@@ -469,7 +490,7 @@ needed.
 - [x] First vertical built on the kernel: [TelecomOS](https://github.com/Indianinnovation/telecomos)
 - [ ] Swappable engine adapter (llama.cpp `llama-server`, vLLM) via OpenAI-compatible API
 - [x] Conversation persistence · document Q&A with citations · human approval gates (v0.2)
-- [ ] Scheduled/background agents
+- [x] Scheduled/background agents (jobs run through the same kernel — and the same approval gates)
 - [ ] Desktop installer (Tauri)
 
 ## License

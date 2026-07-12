@@ -27,6 +27,10 @@ DOCUMENTS_ENABLED = os.environ.get("LLM_OS_DOCUMENTS", "1") == "1"
 CONVERSATIONS_DIR = Path(os.environ.get("CONVERSATIONS_DIR", BASE_DIR / "conversations"))
 APPROVALS_FILE = Path(os.environ.get("APPROVALS_FILE", BASE_DIR / "approvals.json"))
 
+# Scheduled agents — jobs the kernel runs on its own (LLM_OS_SCHEDULER=0 to disable).
+SCHEDULES_FILE = Path(os.environ.get("SCHEDULES_FILE", BASE_DIR / "schedules.json"))
+SCHEDULER_ENABLED = os.environ.get("LLM_OS_SCHEDULER", "1") == "1"
+
 # Tools that may not run until a human approves them. Comma-separated.
 # Default: nothing is gated — opt in deliberately, e.g.
 #   LLM_OS_APPROVAL_TOOLS=write_markdown,execute_remediation

@@ -268,6 +268,7 @@
     <button data-view="trust" aria-selected="false"><span class="ico">🔒</span><span class="navlabel">Trust</span><span class="dot" id="trustDot"></span></button>
     <button data-view="audit" aria-selected="false"><span class="ico">🧾</span><span class="navlabel">Audit</span></button>
     <button data-view="docs" aria-selected="false"><span class="ico">📄</span><span class="navlabel">Documents</span></button>
+    <button data-view="jobs" aria-selected="false"><span class="ico">⏰</span><span class="navlabel">Schedules</span></button>
     <button data-view="memory" aria-selected="false"><span class="ico">🧠</span><span class="navlabel">Memory</span></button>
     <button data-view="tools" aria-selected="false"><span class="ico">🔧</span><span class="navlabel">Tools</span></button>
     <button data-view="models" aria-selected="false"><span class="ico">📦</span><span class="navlabel">Models</span></button>
@@ -372,6 +373,40 @@
     </div>
   </section>
 
+  <!-- SCHEDULES -->
+  <section id="jobs">
+    <div class="head">
+      <div>
+        <h2>Scheduled agents</h2>
+        <p>Work that happens while you sleep. Jobs run through the same kernel —
+           same tools, same audit trail, <b>same approval gates</b>: an unattended job
+           cannot authorize itself.</p>
+      </div>
+    </div>
+    <div class="wrap">
+      <div class="card" style="padding:16px;margin-bottom:18px">
+        <div class="row">
+          <input id="jobName" type="text" placeholder="Job name (e.g. Morning disk check)" style="width:230px">
+          <input id="jobPrompt" type="text" placeholder="What should it do? (a prompt)" style="flex:1;min-width:280px">
+          <select id="jobCadence">
+            <option value="daily:08:00">daily at 08:00</option>
+            <option value="daily:18:00">daily at 18:00</option>
+            <option value="every:60">every hour</option>
+            <option value="every:1440">every 24h</option>
+            <option value="every:5">every 5 min (demo)</option>
+          </select>
+          <button class="btn primary" onclick="createJob()">＋ Schedule</button>
+        </div>
+      </div>
+      <div class="tablecard"><table>
+        <thead><tr><th>Job</th><th>Prompt</th><th style="width:110px">Cadence</th>
+          <th style="width:150px">Next run</th><th style="width:190px">Last result</th>
+          <th style="width:190px"></th></tr></thead>
+        <tbody id="jobRows"></tbody>
+      </table></div>
+    </div>
+  </section>
+
   <!-- MEMORY -->
   <section id="memory">
     <div class="head">
@@ -454,7 +489,8 @@ if (saved) document.documentElement.setAttribute("data-theme", saved);
 
 /* nav */
 const LOADERS = { chat: () => $("prompt").focus(), trust: loadTrust, audit: loadAudit,
-                  docs: loadDocs, memory: loadMemory, tools: loadTools, models: loadModels };
+                  docs: loadDocs, jobs: loadJobs, memory: loadMemory,
+                  tools: loadTools, models: loadModels };
 document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("#nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === b.dataset.view));
@@ -698,6 +734,59 @@ async function reindex() {
   $("docRows").innerHTML = `<tr><td colspan="2" class="empty">Indexing…</td></tr>`;
   await api("/documents/reindex", { method: "POST" });
   loadDocs();
+}
+
+/* ── scheduled agents (#7) ─────────────────────────────────────────────── */
+async function loadJobs() {
+  const d = await api("/schedules");
+  $("jobRows").innerHTML = (d.schedules || []).length ? d.schedules.map(s => {
+    const last = (s.runs || [])[0];
+    const cadence = s.daily_at ? `daily ${s.daily_at}` : `every ${s.every_minutes}m`;
+    const result = !last ? '<span class="dim">never run</span>'
+      : last.awaiting_approval?.length
+        ? `<span class="pill" style="color:var(--warn)">✋ awaiting approval</span>`
+        : last.ok
+          ? `<span class="pill" style="color:var(--good)">✓ ${esc((last.tools || []).join(", ") || "answered")}</span>`
+          : `<span class="pill" style="color:var(--crit)">✗ failed</span>`;
+    return `<tr>
+      <td><b>${esc(s.name)}</b><br><span class="dim" style="font-size:11.5px">${
+        s.enabled ? "enabled" : "paused"}</span></td>
+      <td class="muted">${esc(s.prompt).slice(0, 70)}</td>
+      <td class="mono dim">${cadence}</td>
+      <td class="mono dim">${esc(s.next_run || "—")}</td>
+      <td>${result}${last ? `<br><span class="dim" style="font-size:11px">${esc(last.ts)}</span>` : ""}</td>
+      <td style="text-align:right">
+        <button class="btn" onclick="runJob('${esc(s.id)}')">▶ Run now</button>
+        <button class="btn" onclick="toggleJob('${esc(s.id)}')">${s.enabled ? "⏸" : "▶"}</button>
+        <button class="btn danger" onclick="deleteJob('${esc(s.id)}')">🗑</button>
+      </td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="6" class="empty">No scheduled agents yet — create one above.
+    Try: "Sweep my Downloads folder and tell me what is taking up space."</td></tr>`;
+}
+
+async function createJob() {
+  const name = $("jobName").value.trim(), prompt = $("jobPrompt").value.trim();
+  if (!name || !prompt) return alert("Give the job a name and a prompt.");
+  const [kind, value] = $("jobCadence").value.split(":");
+  const body = kind === "daily"
+    ? { name, prompt, daily_at: value, every_minutes: 0 }
+    : { name, prompt, every_minutes: parseInt(value), daily_at: "" };
+  await api("/schedules", { method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body) });
+  $("jobName").value = ""; $("jobPrompt").value = "";
+  loadJobs();
+}
+async function runJob(id) {
+  $("jobRows").insertAdjacentHTML("afterbegin",
+    `<tr id="running"><td colspan="6" class="empty">Running…</td></tr>`);
+  await fetch(`/schedules/${id}/run`, { method: "POST" });
+  loadJobs(); loadApprovals();
+}
+async function toggleJob(id) { await fetch(`/schedules/${id}/toggle`, { method: "POST" }); loadJobs(); }
+async function deleteJob(id) {
+  if (!confirm("Delete this scheduled agent?")) return;
+  await fetch(`/schedules/${id}`, { method: "DELETE" }); loadJobs();
 }
 
 /* ── approvals (#5) ────────────────────────────────────────────────────── */
