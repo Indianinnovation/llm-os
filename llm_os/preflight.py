@@ -17,7 +17,7 @@ from typing import List
 
 import requests
 
-from . import config, modeltrust
+from . import config, modeltrust, sentinel
 
 PASS, WARN, FAIL = "PASS", "WARN", "FAIL"
 
@@ -70,7 +70,7 @@ def _external_connections(pattern: str) -> List[str]:
     for line in out.splitlines():
         if "->" in line:
             host = line.split("->")[1].split()[0].rsplit(":", 1)[0].strip("[]")
-            if not (host.startswith("127.") or host in ("::1", "localhost")):
+            if not sentinel.is_loopback_host(host):
                 remotes.append(host)
     return remotes
 

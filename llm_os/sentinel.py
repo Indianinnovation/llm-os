@@ -20,7 +20,10 @@ from .audit import AuditLog
 SAMPLE_INTERVAL_S = 3.0
 
 
-def _loopback(host: str) -> bool:
+def is_loopback_host(host: str) -> bool:
+    """Is an observed TCP peer address a loopback address? The single
+    definition shared by the zero-egress checks (this sentinel + preflight).
+    Covers the whole 127.0.0.0/8 range, not just 127.0.0.1."""
     return host.startswith("127.") or host in ("::1", "localhost")
 
 
@@ -51,7 +54,7 @@ def default_sampler() -> List[str]:
     for line in out.splitlines():
         if "->" in line:
             remote = line.split("->")[1].split()[0]
-            if not _loopback(remote.rsplit(":", 1)[0].strip("[]")):
+            if not is_loopback_host(remote.rsplit(":", 1)[0].strip("[]")):
                 remotes.append(remote)
     return remotes
 
