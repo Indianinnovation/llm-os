@@ -16,7 +16,7 @@ from llm_os.audit import AuditLog
 from llm_os.kernel import Kernel
 from llm_os.tools import default_registry
 from tests.test_console_api import StubMemory
-from tests.test_kernel import FakeClient, tool_call_response, text_response
+from tests.test_kernel import FakeClient, text_response, tool_call_response
 
 
 @pytest.fixture

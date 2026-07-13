@@ -31,7 +31,8 @@ def test_unavailability_is_written_to_the_audit_chain_once(tmp_path):
         raise FileNotFoundError("lsof")
     audit = AuditLog(tmp_path)
     s = sentinel.EgressSentinel(audit, sampler=no_lsof)
-    s.check_once(); s.check_once(); s.check_once()
+    for _ in range(3):
+        s.check_once()
     events = [r["event"] for r in audit.tail(20)]
     assert events.count("egress_monitoring_unavailable") == 1   # not once per sample
 

@@ -1,0 +1,13 @@
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Style is consistent by hand; this locks it in without churning the tree.
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]  # long lines exist in prompts/docstrings by intent
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "F811"]   # E402: fixtures imported after path setup;
+                                # F811: pytest fixtures imported by name
+"scripts/*" = ["E402"]         # sys.path.insert before local imports

@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import requests
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
@@ -456,7 +456,7 @@ def tools() -> list:
 
 
 @app.get("/audit")
-def audit(n: int = 20) -> dict:
+def audit(n: int = Query(20, ge=1, le=1000)) -> dict:
     log = _kernel.audit if _kernel else AuditLog(config.AUDIT_DIR)
     return {"chain_valid": log.verify_chain(), "records": log.tail(n)}
 
@@ -559,7 +559,7 @@ def models() -> dict:
 
 
 @app.get("/memory")
-def memory_list(q: str = "", limit: int = 50) -> dict:
+def memory_list(q: str = "", limit: int = Query(50, ge=1, le=1000)) -> dict:
     """Browse or search everything the system remembers."""
     if _kernel is None or _kernel.memory is None:
         return {"enabled": False, "records": []}
