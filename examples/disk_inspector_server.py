@@ -108,7 +108,7 @@ def folder_size(path: str) -> dict:
         total += size
         files += 1
     return {
-        "folder": str(folder),
+        "folder": folder.as_posix(),
         "size_gb": _gb(total),
         "size_bytes": total,
         "file_count": files,
@@ -131,7 +131,7 @@ def largest_items(path: str, top_n: int = 10) -> dict:
         sizes[child] += size
     ranked = sorted(sizes.items(), key=lambda kv: -kv[1])[:top_n]
     return {
-        "folder": str(folder),
+        "folder": folder.as_posix(),
         "largest": [{"name": name, "size_gb": _gb(size)} for name, size in ranked],
         "truncated": truncated,
     }
@@ -178,13 +178,13 @@ def find_duplicates(path: str) -> dict:
                         {
                             "size_mb": round(size / 2**20, 2),
                             "copies": len(paths),
-                            "files": [str(p.relative_to(folder)) for p in paths],
+                            "files": [p.relative_to(folder).as_posix() for p in paths],
                         }
                     )
                     wasted += size * (len(paths) - 1)
     groups.sort(key=lambda g: -(g["size_mb"] * (g["copies"] - 1)))
     return {
-        "folder": str(folder),
+        "folder": folder.as_posix(),
         "duplicate_groups": len(groups),
         "wasted_gb": _gb(wasted),
         "groups": groups[:20],
