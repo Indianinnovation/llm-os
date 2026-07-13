@@ -324,25 +324,42 @@ def check_docker(report: PreflightReport) -> None:
         )
 
 
+def _guard(report: PreflightReport, name: str, fn):
+    """Run one check; a missing platform tool (pgrep/lsof/ps on Windows) or
+    any unexpected error degrades to a WARN instead of tracebacking out of
+    the whole preflight. Checks add their own PASS/FAIL on success and only
+    reach here on a hard failure, so there is no duplicate entry."""
+    try:
+        return fn()
+    except FileNotFoundError as exc:
+        report.add(name, WARN, f"skipped — a required tool is not available here ({exc})",
+                   "Uses POSIX tools (pgrep/lsof/ps) absent on this platform; "
+                   "run in the Docker sandbox for full verification")
+    except Exception as exc:
+        report.add(name, WARN, f"check could not complete: {exc}")
+    return None
+
+
 def run_preflight(mode: str = "native") -> PreflightReport:
     report = PreflightReport()
     if mode == "docker":
-        check_docker(report)
-        check_disk_space(report)
+        _guard(report, "Docker daemon", lambda: check_docker(report))
+        _guard(report, "Disk space", lambda: check_disk_space(report))
         return report
 
-    tags = check_engine(report)
+    tags = _guard(report, "Engine reachable", lambda: check_engine(report))
     if tags:
-        check_models(report, tags)
-        check_model_integrity(report)
-    check_desktop_app(report)
-    check_engine_loopback(report)
-    check_engine_cloud_disabled(report)
-    check_egress_monitoring(report)
-    check_engine_egress(report)
-    check_streamlit_telemetry(report, Path(config.BASE_DIR) / ".streamlit" / "config.toml")
-    check_memory_telemetry(report)
-    check_mcp_config(report)
-    check_mcp_pinning(report)
-    check_disk_space(report)
+        _guard(report, "Routing model", lambda: check_models(report, tags))
+        _guard(report, "Model integrity", lambda: check_model_integrity(report))
+    _guard(report, "Update channel", lambda: check_desktop_app(report))
+    _guard(report, "Engine loopback", lambda: check_engine_loopback(report))
+    _guard(report, "Engine cloud features off", lambda: check_engine_cloud_disabled(report))
+    _guard(report, "Egress monitoring", lambda: check_egress_monitoring(report))
+    _guard(report, "Engine egress", lambda: check_engine_egress(report))
+    _guard(report, "UI telemetry disabled",
+           lambda: check_streamlit_telemetry(report, Path(config.BASE_DIR) / ".streamlit" / "config.toml"))
+    _guard(report, "Vector-store telemetry disabled", lambda: check_memory_telemetry(report))
+    _guard(report, "MCP config", lambda: check_mcp_config(report))
+    _guard(report, "MCP pinning", lambda: check_mcp_pinning(report))
+    _guard(report, "Disk space", lambda: check_disk_space(report))
     return report

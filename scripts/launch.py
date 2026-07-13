@@ -12,6 +12,7 @@ Any FAIL blocks startup and prints the exact fix. WARNs start anyway.
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -133,6 +134,11 @@ def start_docker() -> int:
 
 
 def stop() -> int:
+    if not shutil.which("pkill"):
+        print("--stop uses pkill (POSIX), which isn't on this platform. "
+              "Close the kernel/UI terminal windows, or stop the python "
+              "processes running 'uvicorn llm_os.api' and 'streamlit run ui/app.py'.")
+        return 1
     subprocess.run(["pkill", "-f", "uvicorn llm_os.api"])
     subprocess.run(["pkill", "-f", "streamlit run ui/app.py"])
     print("stopped kernel and UI (if they were running).")
