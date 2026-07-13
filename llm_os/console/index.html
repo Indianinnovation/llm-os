@@ -989,6 +989,7 @@ async function loadApprovals() {
   let d;
   try { d = await api("/approvals"); } catch { return; }
   const pending = d.pending || [];
+  const tokenReq = d.token_required;   // the token field only appears when on
   $("approvalBar").innerHTML = pending.length ? pending.map(p => {
     // Show WHAT would be written, not a truncated JSON blob — a person
     // cannot authorize what they cannot read. But frame it as a preview:
@@ -1008,15 +1009,15 @@ async function loadApprovals() {
           <p class="mono" style="font-size:12px;margin:6px 0 0">${esc(JSON.stringify(rest))}</p>
         </div>
         <div style="display:flex;flex-direction:column;gap:7px;align-items:stretch;min-width:180px">
-          <input id="tok-${esc(p.id)}" type="text" autocomplete="off" spellcheck="false"
+          ${tokenReq ? `<input id="tok-${esc(p.id)}" type="text" autocomplete="off" spellcheck="false"
                  placeholder="approval token"
                  style="font-family:var(--mono);font-size:12px"
-                 onkeydown="if(event.key==='Enter')decide('${esc(p.id)}','approve')">
+                 onkeydown="if(event.key==='Enter')decide('${esc(p.id)}','approve')">` : ""}
           <div class="row">
             <button class="btn primary" onclick="decide('${esc(p.id)}','approve')">Approve &amp; run</button>
             <button class="btn danger" onclick="decide('${esc(p.id)}','reject')">Reject</button>
           </div>
-          <span class="sub" style="font-size:11px">shown by the launcher (also in .llmos_kernel.log) · blank if disabled</span>
+          ${tokenReq ? `<span class="sub" style="font-size:11px">token: shown by the launcher (also in .llmos_kernel.log)</span>` : ""}
         </div>
       </div>
       ${preview ? `<div class="artifact" style="margin-top:12px">

@@ -93,10 +93,30 @@ def test_the_token_never_appears_in_any_http_response(client):
     assert all("s3cr3t42" not in b for b in bodies)
 
 
-def test_no_token_configured_keeps_the_old_behaviour(client, tmp_path, monkeypatch):
-    # Opt-out / tests: when no token was minted, approval works as before.
+def test_no_token_configured_approves_on_click(client, tmp_path, monkeypatch):
+    # The default: no token minted, clicking Approve just runs it.
     monkeypatch.setattr(api, "_approval_token", None)
     approval_id = _propose(client)
     r = client.post(f"/approvals/{approval_id}", json={"decision": "approve"})
     assert r.status_code == 200
     assert (tmp_path / "x.md").exists()
+
+
+def test_approvals_reports_whether_the_token_is_required(client, monkeypatch):
+    assert client.get("/approvals").json()["token_required"] is True   # fixture sets one
+    monkeypatch.setattr(api, "_approval_token", None)
+    assert client.get("/approvals").json()["token_required"] is False
+
+
+def test_token_is_opt_in_by_default(monkeypatch):
+    import importlib
+
+    monkeypatch.delenv("LLM_OS_APPROVAL_TOKEN", raising=False)
+    from llm_os import config as fresh
+    importlib.reload(fresh)
+    assert fresh.APPROVAL_TOKEN_REQUIRED is False   # clicking Approve is enough
+    monkeypatch.setenv("LLM_OS_APPROVAL_TOKEN", "1")
+    importlib.reload(fresh)
+    assert fresh.APPROVAL_TOKEN_REQUIRED is True     # opt-in still works
+    monkeypatch.undo()
+    importlib.reload(fresh)

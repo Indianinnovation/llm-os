@@ -274,6 +274,7 @@ def approvals() -> dict:
         "gated_tools": [
             t["name"] for t in _kernel.registry.describe() if t["requires_approval"]
         ],
+        "token_required": _approval_token is not None,
     }
 
 

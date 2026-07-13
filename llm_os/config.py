@@ -47,10 +47,12 @@ APPROVAL_TOOLS = [
     if t.strip()
 ]
 
-# Approving a gated tool requires a per-boot token printed to the server's
-# stdout, so the caller that PROPOSED an action (over HTTP) cannot also
-# APPROVE it. Default on; LLM_OS_APPROVAL_TOKEN=0 for a pure single-user box.
-APPROVAL_TOKEN_REQUIRED = os.environ.get("LLM_OS_APPROVAL_TOKEN", "1") != "0"
+# Optional second factor for approving a gated tool: a per-boot token printed
+# to the server's stdout, so the caller that PROPOSED an action (over HTTP)
+# cannot also APPROVE it. OFF by default — clicking Approve is enough on a
+# single-user box. Turn it on (LLM_OS_APPROVAL_TOKEN=1) if untrusted local
+# processes are in your threat model.
+APPROVAL_TOKEN_REQUIRED = os.environ.get("LLM_OS_APPROVAL_TOKEN", "0") == "1"
 
 # Retrieval grounding: a floor, not a filter.
 #

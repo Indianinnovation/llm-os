@@ -13,10 +13,11 @@ loopback. Within that boundary it defends:
   connection to the audit chain; where its tooling is unavailable it reports
   *unavailable*, never *clean*.
 - **The model proposes, a human approves.** Tools that change state are gated;
-  a gated tool does not run until a person approves. Approval requires a
-  per-boot token printed only to the server console, so a caller that reaches
-  only the HTTP API cannot approve its own proposal (`LLM_OS_APPROVAL_TOKEN=0`
-  opts out for a single-user box that accepts that risk).
+  a gated tool does not run until a person clicks Approve. On a single-user box
+  that click is the human step. If untrusted local processes are in your threat
+  model, `LLM_OS_APPROVAL_TOKEN=1` adds a per-boot token — printed only to the
+  server console — that approval then requires, so a caller reaching only the
+  HTTP API cannot approve its own proposal.
 - **Tamper-evident audit.** Every action is hash-chained; the log can be
   verified by a standalone tool that trusts nothing in this repo.
 - **Supply-chain pinning.** Model digests and MCP server file hashes are
