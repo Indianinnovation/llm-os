@@ -112,7 +112,10 @@ def _approval_token_from_log(log_path: Path = None) -> str:
     from a local file by the local user — never sent over HTTP."""
     log_path = log_path or (PROJECT_ROOT / ".llmos_kernel.log")
     try:
-        for line in log_path.read_text().splitlines():
+        # The kernel writes the token line with a 🔑; read as UTF-8 so this
+        # does not crash on Windows' cp1252 default.
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
             if "Approval token for this session:" in line:
                 return line.rsplit(":", 1)[-1].strip()
     except OSError:

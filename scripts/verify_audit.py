@@ -148,6 +148,11 @@ def prove(path: Path, text: str, salt_path: Path) -> int:
 
 
 def main() -> int:
+    # The report uses ✓/✗/🔗 and em dashes; Windows' default console codec
+    # (cp1252) cannot encode them and print() would crash. Force UTF-8 so the
+    # tool runs on any platform — the ASCII verdicts stay readable regardless.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("logfile", nargs="?", default="audit/audit.jsonl",

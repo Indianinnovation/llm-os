@@ -12,9 +12,10 @@ from scripts.launch import _approval_token_from_log
 def test_token_is_lifted_from_the_log(tmp_path):
     log = tmp_path / "kernel.log"
     log.write_text(
-        "starting…\n"
+        "starting...\n"
         "  🔑 Approval token for this session: 4cf55a15\n"
-        "     Enter it in the console…\n"
+        "     Enter it in the console...\n",
+        encoding="utf-8",   # the 🔑 must not depend on the platform's codec
     )
     assert _approval_token_from_log(log) == "4cf55a15"
 
