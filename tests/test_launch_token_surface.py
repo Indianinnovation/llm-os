@@ -19,9 +19,11 @@ def test_missing_file_returns_empty(tmp_path):
     assert _approval_token_from_file(tmp_path / "nope") == ""
 
 
-def test_the_token_is_written_0600_not_to_the_log(tmp_path, monkeypatch):
-    # The security property: the token lands in an owner-only file, never in
-    # the kernel log a second user could read.
+def test_the_token_is_written_to_an_owner_only_file(tmp_path, monkeypatch):
+    # The security property: the token lands in a dedicated file, never in the
+    # kernel log a second user could read. The 0600 bit is a POSIX concept
+    # (Windows uses ACLs), so the mode assertion is POSIX-only.
+    import os
     import stat
 
     from llm_os import api, config
@@ -32,5 +34,6 @@ def test_the_token_is_written_0600_not_to_the_log(tmp_path, monkeypatch):
 
     written = tmp_path / ".approval_token"
     assert written.read_text() == "s3cr3t-token-value"
-    mode = stat.S_IMODE(written.stat().st_mode)
-    assert mode == 0o600, f"token file is {oct(mode)}, expected 0o600"
+    if os.name == "posix":
+        mode = stat.S_IMODE(written.stat().st_mode)
+        assert mode == 0o600, f"token file is {oct(mode)}, expected 0o600"
