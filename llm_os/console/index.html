@@ -1016,7 +1016,7 @@ async function loadApprovals() {
             <button class="btn primary" onclick="decide('${esc(p.id)}','approve')">Approve &amp; run</button>
             <button class="btn danger" onclick="decide('${esc(p.id)}','reject')">Reject</button>
           </div>
-          <span class="sub" style="font-size:11px">token is in the server terminal · leave blank if disabled</span>
+          <span class="sub" style="font-size:11px">shown by the launcher (also in .llmos_kernel.log) · blank if disabled</span>
         </div>
       </div>
       ${preview ? `<div class="artifact" style="margin-top:12px">

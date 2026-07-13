@@ -98,7 +98,26 @@ def start_native() -> int:
 
     print(f"\n{GREEN}{BOLD}LLM OS is up.{RESET}  UI: http://localhost:8501  ·  "
           f"API: http://localhost:8000/docs\n")
+    token = _approval_token_from_log()
+    if token:
+        print(f"  {BOLD}🔑 Approval token: {token}{RESET}")
+        print(f"  {DIM}Type it in the console to approve a gated tool "
+              f"(disable with LLM_OS_APPROVAL_TOKEN=0).{RESET}\n")
     return 0
+
+
+def _approval_token_from_log(log_path: Path = None) -> str:
+    """Lift the per-boot approval token the kernel printed into its log, so
+    the launcher can show it on the operator's actual terminal. It is read
+    from a local file by the local user — never sent over HTTP."""
+    log_path = log_path or (PROJECT_ROOT / ".llmos_kernel.log")
+    try:
+        for line in log_path.read_text().splitlines():
+            if "Approval token for this session:" in line:
+                return line.rsplit(":", 1)[-1].strip()
+    except OSError:
+        pass
+    return ""
 
 
 def start_docker() -> int:
