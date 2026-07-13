@@ -13,7 +13,7 @@ import os
 import shutil
 import subprocess
 import threading
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 from .audit import AuditLog
 

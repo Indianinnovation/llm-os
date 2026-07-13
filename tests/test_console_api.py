@@ -10,7 +10,6 @@ from llm_os.audit import AuditLog
 from llm_os.kernel import Kernel
 from llm_os.tools import default_registry
 from tests.test_kernel import FakeClient, text_response
-from tests.test_memory import fake_embedder
 
 
 class StubMemory:

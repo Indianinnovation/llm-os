@@ -15,8 +15,6 @@ from llm_os.kernel import (
     Kernel,
     filter_weak_matches,
     retrieval_matches,
-    sources_block,
-    ungrounded_reply,
 )
 from llm_os.registry import Tool, ToolRegistry
 from tests.test_kernel import FakeClient, text_response, tool_call_response

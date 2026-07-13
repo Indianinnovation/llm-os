@@ -23,7 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import requests  # noqa: E402
 
-from llm_os.preflight import FAIL, PASS, run_preflight  # noqa: E402
+from llm_os.preflight import FAIL, run_preflight  # noqa: E402
 
 GREEN, RED, YELLOW, BOLD, DIM, RESET = (
     "\033[32m", "\033[31m", "\033[33m", "\033[1m", "\033[2m", "\033[0m",
@@ -171,7 +171,8 @@ def main() -> int:
         return 0
 
     if args.approve_mcp:
-        from llm_os import config as llm_config, mcptrust
+        from llm_os import config as llm_config
+        from llm_os import mcptrust
         approved = mcptrust.approve_config(llm_config.MCP_CONFIG)
         print(f"{GREEN}Pinned {len(approved)} MCP server(s) in mcp_manifest.json:{RESET}")
         for name, entry in approved.items():

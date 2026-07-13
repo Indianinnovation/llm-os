@@ -16,7 +16,8 @@ _LEADING_H1_RE = re.compile(r"^#\s+(?P<heading>[^\n]*)\n?")
 def _same_heading(a: str, b: str) -> bool:
     """Compare a title and a heading the way a reader would: case,
     punctuation and spacing are not what makes them different."""
-    normalize = lambda s: re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+    def normalize(s: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
     return bool(normalize(a)) and normalize(a) == normalize(b)
 
 

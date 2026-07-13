@@ -1,16 +1,13 @@
 """Scheduled agents: cadence, due-ness, runs, and the safety property."""
 
-from datetime import datetime, timedelta
-
-import pytest
+from datetime import datetime
 
 from llm_os.approvals import ApprovalStore
 from llm_os.audit import AuditLog
 from llm_os.kernel import Kernel
-from llm_os.scheduler import ScheduleStore, Scheduler, compute_next_run
+from llm_os.scheduler import Scheduler, ScheduleStore, compute_next_run
 from llm_os.tools import default_registry
 from tests.test_kernel import FakeClient, text_response, tool_call_response
-
 
 # ── cadence ─────────────────────────────────────────────────────────────────
 

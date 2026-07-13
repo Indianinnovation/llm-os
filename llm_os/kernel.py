@@ -276,12 +276,12 @@ def is_placeholder_content(body: str) -> bool:
         return True
     # Structure with no substance: headings/bullets whose bodies are all
     # one short line. A real note has at least one line with actual prose.
-    lines = [l.strip() for l in body.splitlines() if l.strip()]
+    lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
     prose = [
-        l for l in lines
-        if not l.startswith(("#", "-", "*", ">", "|"))
-        and not re.match(r"^\d+[.)]\s", l)
-        and len(l) > 60
+        ln for ln in lines
+        if not ln.startswith(("#", "-", "*", ">", "|"))
+        and not re.match(r"^\d+[.)]\s", ln)
+        and len(ln) > 60
     ]
     return len(lines) >= 3 and not prose
 

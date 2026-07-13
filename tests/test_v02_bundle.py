@@ -10,7 +10,6 @@ from llm_os.kernel import Kernel, _parse_textual_tool_call
 from llm_os.tools import default_registry
 from tests.test_kernel import FakeClient, text_response, tool_call_response
 
-
 # ── #3 conversations ────────────────────────────────────────────────────────
 
 def test_conversation_survives_and_replays(tmp_path):

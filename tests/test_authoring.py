@@ -6,11 +6,11 @@ human is asked to approve it."""
 
 import pytest
 
+from llm_os import config
 from llm_os.approvals import ApprovalStore
 from llm_os.audit import AuditLog
 from llm_os.kernel import Kernel, is_placeholder_content
 from llm_os.tools import default_registry
-from llm_os import config
 from tests.test_kernel import FakeClient, text_response, tool_call_response
 
 REAL_NOTE = """## 1. Ledger — reconciliation for freight brokers

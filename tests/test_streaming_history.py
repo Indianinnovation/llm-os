@@ -4,11 +4,10 @@ import pytest
 
 from llm_os.audit import AuditLog
 from llm_os.kernel import Kernel
+from llm_os.memory import EpisodicMemory
 from llm_os.tools import default_registry
 from tests.test_kernel import FakeClient, text_response, tool_call_response
 from tests.test_memory import fake_embedder
-
-from llm_os.memory import EpisodicMemory
 
 
 class StreamingFakeClient(FakeClient):

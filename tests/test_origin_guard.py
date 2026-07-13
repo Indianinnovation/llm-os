@@ -66,7 +66,7 @@ def test_rebound_page_cannot_click_approve(client):
 
 def test_blocked_request_lands_in_audit_chain(client):
     client.get("/health", headers={"host": "evil.com:8000"})
-    events = [json.loads(l) for l in api._kernel.audit.path.read_text().splitlines()]
+    events = [json.loads(ln) for ln in api._kernel.audit.path.read_text().splitlines()]
     blocked = [e for e in events if e["event"] == "blocked_request"]
     assert blocked and blocked[-1]["host"] == "evil.com:8000"
 

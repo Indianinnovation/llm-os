@@ -7,8 +7,6 @@ very first step. Each check now degrades to a clear WARN instead.
 
 import subprocess
 
-import pytest
-
 from llm_os import preflight
 
 

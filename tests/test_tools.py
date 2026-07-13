@@ -60,7 +60,7 @@ def test_duplicate_title_h1_is_stripped(tmp_path, monkeypatch, title, body):
     markdown_writer.write_markdown(filename="note", title=title, content=body)
     document = (tmp_path / "note.md").read_text()
     # Exactly one H1: the title. The body's echo of it is gone.
-    assert len([l for l in document.splitlines() if l.startswith("# ")]) == 1
+    assert len([ln for ln in document.splitlines() if ln.startswith("# ")]) == 1
     assert document.startswith(f"# {title}\n")
 
 

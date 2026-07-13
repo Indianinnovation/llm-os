@@ -29,7 +29,7 @@ from .documents import create_index
 from .kernel import Kernel
 from .mcp_client import MCPManager
 from .memory import create_memory
-from .scheduler import ScheduleStore, Scheduler
+from .scheduler import Scheduler, ScheduleStore
 from .sentinel import EgressSentinel
 from .tools import default_registry
 from .tools.document_tools import document_tools

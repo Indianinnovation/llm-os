@@ -8,7 +8,7 @@ instead. Either way the registry emits Ollama-native tool specs from a
 single source of truth, and every tool is labelled with its origin.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Type
 
 from pydantic import BaseModel, ValidationError

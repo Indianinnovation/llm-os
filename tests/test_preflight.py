@@ -1,10 +1,8 @@
 """Preflight gate tests: config-drift detection with injected state."""
 
-from pathlib import Path
 
 import pytest
 
-from llm_os import preflight
 from llm_os.preflight import (
     FAIL,
     PASS,

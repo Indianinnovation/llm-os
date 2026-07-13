@@ -39,7 +39,7 @@ def canonical(record: dict) -> str:
 
 def verify(path: Path) -> int:
     try:
-        lines = [l for l in path.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in path.read_text().splitlines() if ln.strip()]
     except OSError as exc:
         print(f"{RED}cannot read {path}: {exc}{RESET}")
         return 2
