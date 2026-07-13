@@ -155,6 +155,22 @@ def check_engine_loopback(report: PreflightReport) -> None:
         report.add("Engine bound to loopback", PASS, ", ".join(sorted(set(addresses))))
 
 
+def check_egress_monitoring(report: PreflightReport) -> None:
+    """The continuous egress sentinel needs pgrep + lsof. Where they are
+    absent it cannot watch anything — the trust page must say so, not imply
+    the machine is clean when it is merely blind."""
+    from . import sentinel
+
+    if sentinel.monitoring_available():
+        report.add("Egress monitoring", PASS, "pgrep + lsof present")
+    else:
+        report.add(
+            "Egress monitoring", FAIL,
+            "pgrep/lsof missing — egress cannot be watched on this platform",
+            "Install lsof and procps, or run in the Docker sandbox",
+        )
+
+
 def check_engine_egress(report: PreflightReport) -> None:
     remotes = _external_connections("ollama serve")
     if remotes:
@@ -322,6 +338,7 @@ def run_preflight(mode: str = "native") -> PreflightReport:
     check_desktop_app(report)
     check_engine_loopback(report)
     check_engine_cloud_disabled(report)
+    check_egress_monitoring(report)
     check_engine_egress(report)
     check_streamlit_telemetry(report, Path(config.BASE_DIR) / ".streamlit" / "config.toml")
     check_memory_telemetry(report)

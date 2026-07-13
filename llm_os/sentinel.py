@@ -10,6 +10,7 @@ a compromised or misconfigured component cannot leak quietly.
 """
 
 import os
+import shutil
 import subprocess
 import threading
 from typing import Callable, Dict, List, Optional
@@ -21,6 +22,12 @@ SAMPLE_INTERVAL_S = 3.0
 
 def _loopback(host: str) -> bool:
     return host.startswith("127.") or host in ("::1", "localhost")
+
+
+def monitoring_available() -> bool:
+    """The default sampler needs pgrep + lsof. Where they are absent, egress
+    cannot be watched — and that must read as UNAVAILABLE, never as clean."""
+    return bool(shutil.which("pgrep") and shutil.which("lsof"))
 
 
 def default_sampler() -> List[str]:
@@ -62,6 +69,8 @@ class EgressSentinel(threading.Thread):
         self.interval = interval
         self.violations: Dict[str, str] = {}  # remote -> first-seen audit id
         self.samples = 0
+        self.available = True
+        self.reason = ""
         self._halt = threading.Event()
 
     def run(self) -> None:
@@ -72,6 +81,15 @@ class EgressSentinel(threading.Thread):
     def check_once(self) -> List[str]:
         try:
             remotes = self.sampler()
+            self.available = True
+        except FileNotFoundError as exc:
+            # Tooling is missing — we are BLIND, not clean. Say so once, loudly.
+            if self.available:
+                self.reason = f"egress monitoring unavailable: {exc} not found"
+                self.audit.append("egress_monitoring_unavailable", {"detail": str(exc)})
+            self.available = False
+            self.samples += 1
+            return []
         except Exception:
             remotes = []
         self.samples += 1
@@ -90,6 +108,8 @@ class EgressSentinel(threading.Thread):
     def status(self) -> dict:
         return {
             "active": self.is_alive(),
+            "available": self.available,
+            "reason": self.reason,
             "samples": self.samples,
             "violations": [
                 {"remote": remote, "audit_id": audit_id}
