@@ -6,6 +6,7 @@ import hmac
 import json
 import secrets
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -110,7 +111,6 @@ def _verify_model_or_die(audit: AuditLog) -> None:
         raise RuntimeError(f"Model trust verification failed: {detail}")
 
 
-@app.on_event("startup")
 def _startup() -> None:
     global _kernel, _mcp, _sentinel, _docs, _convos, _schedules, _scheduler
     global _approval_token
@@ -173,7 +173,6 @@ def _startup() -> None:
         _scheduler.start()
 
 
-@app.on_event("shutdown")
 def _shutdown() -> None:
     if _scheduler is not None:
         _scheduler.stop()
@@ -181,6 +180,16 @@ def _shutdown() -> None:
         _sentinel.stop()
     if _mcp is not None:
         _mcp.shutdown()
+
+
+@asynccontextmanager
+async def _lifespan(app):
+    _startup()
+    yield
+    _shutdown()
+
+
+app.router.lifespan_context = _lifespan
 
 
 class Turn(BaseModel):
