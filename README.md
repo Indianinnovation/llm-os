@@ -2,6 +2,9 @@
 
 **Everything runs on your machine. Nothing leaves it.**
 
+[![CI](https://github.com/Indianinnovation/llm-os/actions/workflows/ci.yml/badge.svg)](https://github.com/Indianinnovation/llm-os/actions/workflows/ci.yml)
+&nbsp;241 tests on Linux · macOS · Windows &nbsp;·&nbsp; Python 3.10 &nbsp;·&nbsp; Apache 2.0
+
 ![Demo: the script kills the Wi-Fi radio on camera, every routing path works offline, verification passes](docs/demo.gif)
 
 *One unedited take: the demo script disables the Wi-Fi radio on camera → **TRUE AIRPLANE MODE** → math routing, sandboxed file generation, MCP disk tools, cross-session memory — then the verification suite closes with `Mode: OFFLINE — egress impossible by construction`. Full-resolution video: [docs/demo.mp4](docs/demo.mp4). Reproduce it yourself: `./scripts/demo.sh`.*
@@ -17,7 +20,7 @@ LLM OS is an implementation of [Andrej Karpathy's LLM OS idea](https://x.com/kar
 │      ▼                                                              │
 │  KERNEL (FastAPI)                          ┌─────────────────────┐  │
 │   • routes intent via native tool-calling  │ PREFLIGHT GATE      │  │
-│   • validates all tool params (Pydantic)   │ 13 checks, blocks   │  │
+│   • validates all tool params (Pydantic)   │ 14 checks, blocks   │  │
 │   • hash-chained audit log of every action │ startup on failure: │  │
 │   • model + MCP-server pinning (no drift)  │ telemetry off ·     │  │
 │   • rejects non-loopback Host/Origin       │ loopback-only ·     │  │
@@ -64,7 +67,7 @@ in the Docker sandbox).
 | 💬 **Chat** | Ask anything — answers **stream token by token**, each tool call appears live as a chip with its audit id, follow-ups work, and **chats are saved** (they survive a refresh, a restart, a reboot) |
 | ⏰ **Schedules** | Agents that run on their own — "every morning, check disk usage and report" — with runs, next-run times, and any approvals they are waiting on |
 | 📄 **Documents** | Drop your files in `documents/` and ask about them — answers come back **with citations** (`sample-nda.md (chunk 1/1)`), indexed and read entirely on this machine |
-| 🔒 **Trust** | Are all 13 privacy checks passing *right now*? Has the egress sentinel seen anything leave? Is the model digest still pinned? |
+| 🔒 **Trust** | Are all 14 privacy checks passing *right now*? Has the egress sentinel seen anything leave? Is the model digest still pinned? |
 | 🧾 **Audit** | Every routing decision and tool execution, hash-chain verified — searchable, and exportable as signed-in-order JSONL for an auditor |
 | 🧠 **Memory** | Everything the system remembers about you — searchable, and **erasable** (one record, or all of it) |
 | 🔧 **Tools** | Every tool the model may call, its source (`builtin` vs `mcp:<server>`), call counts, failures, and latency |
@@ -633,21 +636,32 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-155 tests: sandbox-escape attempts against the expression evaluator,
+241 tests: sandbox-escape attempts against the expression evaluator,
 path-traversal attacks on the file tool, audit-chain tamper detection,
 model digest-pinning enforcement, egress-sentinel behavior, approval-gate
 enforcement (a gated tool cannot execute without a human decision, and a
 scheduled run cannot approve itself), document-index and scheduler
 behavior, MCP supply-chain pinning (a drifted server is never spawned),
-the loopback origin guard (a rebound page cannot click Approve), and
-telemetry-off regression guards — all with a mocked LLM, no engine needed.
+the loopback origin guard (a rebound page cannot click Approve),
+grounding (a weak retrieval refuses instead of inventing), audit-content
+redaction, and telemetry-off regression guards — all with a mocked LLM, no
+engine needed.
 
-Two of those tests exist because of real bugs this project shipped and then
-caught: **two processes racing the same audit log** (a fast restart forked
-the hash chain — now serialized with `flock` + fsync, and the tests run two
-real processes and four threads against it), and **the inference engine
-phoning its vendor's cloud** (found by the egress sentinel, not by reading
-docs — preflight now refuses to start without `OLLAMA_NO_CLOUD=1`).
+**Runs green on Linux, macOS, and Windows** — every push is checked by CI
+across all three (`.github/workflows/ci.yml`). The one genuinely OS-specific
+piece, the audit log's file lock (`fcntl` on POSIX, `msvcrt` on Windows,
+behind `llm_os/portalock.py`), is exercised on each platform; the
+multi-process audit-race tests run two real processes and four threads
+against it.
+
+Several of those tests exist because of real bugs this project shipped and
+then caught: **two processes racing the same audit log** (a fast restart
+forked the hash chain — now serialized with a portable file lock + fsync);
+**the inference engine phoning its vendor's cloud** (found by the egress
+sentinel, not by reading docs — preflight now refuses to start without
+`OLLAMA_NO_CLOUD=1`); and **an audit record larger than the tail-read window
+forking the chain** (the hash lookup now grows its read until the last
+record is whole).
 
 ## Roadmap
 
