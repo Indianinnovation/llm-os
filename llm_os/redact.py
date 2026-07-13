@@ -95,23 +95,36 @@ def _redact_value(value: Any, salt: bytes) -> dict:
     }
 
 
-def redact(payload: Any, salt: bytes) -> Any:
+# A tool's params and result carry arbitrary, tool-defined content — the
+# `remember` tool stores under 'fact', another returns under 'stored'. A
+# denylist of field names cannot enumerate them all, so INSIDE these subtrees
+# every string is treated as content. Structure (keys, numbers, booleans)
+# still survives; only the words go.
+CONTENT_SUBTREES = frozenset({"params", "result"})
+
+
+def redact(payload: Any, salt: bytes, in_content: bool = False) -> Any:
     """Replace every content-bearing field with a commitment to it.
 
-    Structure survives — tool names, statuses, durations, ids, citations,
-    approvals — because that is what an auditor reads. Only the words go.
+    Structure survives — tool names, statuses, durations, ids — because that
+    is what an auditor reads. Only the words go. Named content keys are
+    redacted anywhere; inside params/result, ALL strings are.
     """
     if isinstance(payload, dict):
-        return {
-            key: (
-                _redact_value(value, salt)
-                if key in CONTENT_KEYS and value not in (None, "", [], {})
-                else redact(value, salt)
-            )
-            for key, value in payload.items()
-        }
+        result = {}
+        for key, value in payload.items():
+            enter = in_content or key in CONTENT_SUBTREES
+            if value in (None, "", [], {}):
+                result[key] = value
+            elif key in CONTENT_KEYS or (in_content and isinstance(value, str)):
+                result[key] = _redact_value(value, salt)
+            else:
+                result[key] = redact(value, salt, in_content=enter)
+        return result
     if isinstance(payload, list):
-        return [redact(item, salt) for item in payload]
+        return [redact(item, salt, in_content) for item in payload]
+    if in_content and isinstance(payload, str) and payload:
+        return _redact_value(payload, salt)
     return payload
 
 

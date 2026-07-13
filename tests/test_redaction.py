@@ -34,6 +34,25 @@ def test_the_prompt_never_reaches_the_disk(log):
     assert "Vandelay" not in _raw(log)
 
 
+def test_arbitrary_tool_param_and_result_fields_are_redacted(log):
+    # A denylist of field names leaks the next tool's field. The `remember`
+    # tool stores its text under 'fact' and returns it under 'stored' —
+    # neither a named content key. Inside params/result, ALL strings go.
+    log.append("tool_execution", {
+        "tool": "remember", "status": "success",
+        "params": {"fact": SECRET},
+        "result": {"stored": SECRET, "id": "abc123"},
+    })
+    raw = _raw(log)
+    assert "ZORPTHAX" not in raw
+    assert "Vandelay" not in raw
+    # Structure an auditor reads still survives.
+    import json
+    rec = json.loads(raw.splitlines()[0])
+    assert rec["tool"] == "remember"
+    assert rec["status"] == "success"
+
+
 def test_document_bodies_and_excerpts_never_reach_the_disk(log):
     log.append(
         "tool_execution",
