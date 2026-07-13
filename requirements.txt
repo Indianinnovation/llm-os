@@ -1,8 +1,13 @@
-fastapi>=0.110
-uvicorn>=0.29
-pydantic>=2.6
-ollama>=0.4.0
-mcp>=1.2
-chromadb>=1.0
-requests>=2.31.0
-streamlit>=1.35.0
+# Pinned to the exact versions this release is tested against. A project that
+# pins model digests and MCP server hashes must pin its own runtime too:
+# two installs a week apart get the same code, or the supply-chain claim is
+# false at the layer an auditor checks first. Full transitive closure in
+# requirements.lock (pip install -r requirements.lock for a byte-identical env).
+fastapi==0.139.0
+uvicorn==0.51.0
+pydantic==2.13.4
+ollama==0.6.2
+mcp==1.28.1
+chromadb==1.5.9
+requests==2.34.2
+streamlit==1.59.1
