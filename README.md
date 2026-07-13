@@ -654,17 +654,9 @@ behind `llm_os/portalock.py`), is exercised on each platform; the
 multi-process audit-race tests run two real processes and four threads
 against it.
 
-See it for yourself — this pulls the latest CI run live from GitHub (no
-token) and prints the three-platform matrix:
+![CI demo: the latest GitHub Actions run pulled live from the public API and rendered as a Linux / macOS / Windows matrix, all three green](docs/ci_demo.gif)
 
-```bash
-./scripts/ci_demo.sh
-```
-
-<!-- Recording: capture ./scripts/ci_demo.sh into docs/ci_demo.gif, then
-     uncomment the line below.
-![CI demo: the latest GitHub Actions run rendered as a Linux/macOS/Windows matrix, all green](docs/ci_demo.gif)
--->
+*Live from the public GitHub Actions API (no token): the latest completed run, its real commit, and all three platforms `✓ pass` — `ALL GREEN — 241 tests, three platforms, every push`. Full video: [docs/ci_demo.mp4](docs/ci_demo.mp4). Run it yourself: `./scripts/ci_demo.sh`.*
 
 
 Several of those tests exist because of real bugs this project shipped and
