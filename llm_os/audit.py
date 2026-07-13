@@ -33,19 +33,30 @@ def _last_hash_of(handle) -> str:
     overlaps, a second kernel, a cron job) would otherwise each append
     against their own stale idea of the tip and fork the chain — which
     verification then reports as tampering, forever.
+
+    The read window grows until the final line is a COMPLETE record. A
+    fixed window forked the chain on any record larger than it: the tail
+    began mid-record, the last "line" was an unparseable fragment, and the
+    fallback below linked the next record to GENESIS.
     """
     handle.seek(0, os.SEEK_END)
     size = handle.tell()
     if size == 0:
         return GENESIS_HASH
-    handle.seek(max(0, size - _TAIL_BYTES))
-    lines = [line for line in handle.read().splitlines() if line.strip()]
-    if not lines:
-        return GENESIS_HASH
-    try:
-        return json.loads(lines[-1]).get("hash", GENESIS_HASH)
-    except json.JSONDecodeError:
-        return GENESIS_HASH
+    window = _TAIL_BYTES
+    while True:
+        handle.seek(max(0, size - window))
+        lines = [line for line in handle.read().splitlines() if line.strip()]
+        if not lines:
+            return GENESIS_HASH
+        try:
+            # The last line is trustworthy only once the window holds the
+            # whole final record. If it parses, we have the true tip.
+            return json.loads(lines[-1]).get("hash", GENESIS_HASH)
+        except json.JSONDecodeError:
+            if window >= size:
+                return GENESIS_HASH  # whole file read, last line truly corrupt
+            window = min(window * 2, size)
 
 
 class AuditLog:
