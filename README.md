@@ -419,6 +419,16 @@ against a log you are not permitted to rewrite. Set
 `LLM_OS_AUDIT_CONTENT=plaintext` if you would rather keep full forensic
 detail.
 
+Rotating the salt erases the *audit* content — but the same prompts and
+document bodies also live in plaintext in `memory_store/`, `documents/`,
+`document_index/`, `conversations/`, and `approvals.json`, which the hash
+chain has no say over. To honour "delete everything about me" you clear those
+too, in one act, which also rotates the salt:
+
+```bash
+python scripts/erase.py            # asks first; --yes to skip
+```
+
 ## Prove the log: the standalone auditor
 
 The audit chain is only worth something if someone other than the kernel can
