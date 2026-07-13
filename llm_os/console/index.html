@@ -1007,9 +1007,16 @@ async function loadApprovals() {
           </p>
           <p class="mono" style="font-size:12px;margin:6px 0 0">${esc(JSON.stringify(rest))}</p>
         </div>
-        <div class="row">
-          <button class="btn primary" onclick="decide('${esc(p.id)}','approve')">Approve &amp; run</button>
-          <button class="btn danger" onclick="decide('${esc(p.id)}','reject')">Reject</button>
+        <div style="display:flex;flex-direction:column;gap:7px;align-items:stretch;min-width:180px">
+          <input id="tok-${esc(p.id)}" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="approval token"
+                 style="font-family:var(--mono);font-size:12px"
+                 onkeydown="if(event.key==='Enter')decide('${esc(p.id)}','approve')">
+          <div class="row">
+            <button class="btn primary" onclick="decide('${esc(p.id)}','approve')">Approve &amp; run</button>
+            <button class="btn danger" onclick="decide('${esc(p.id)}','reject')">Reject</button>
+          </div>
+          <span class="sub" style="font-size:11px">token is in the server terminal · leave blank if disabled</span>
         </div>
       </div>
       ${preview ? `<div class="artifact" style="margin-top:12px">
@@ -1022,10 +1029,11 @@ async function loadApprovals() {
 async function decide(id, decision) {
   // Approving a gated tool needs the session token printed to the server
   // terminal — the proposer (this page, over HTTP) cannot read it, so a human
-  // at the machine has to supply it. Rejecting is safe and needs nothing.
+  // at the machine types it into the card. Rejecting is safe and needs nothing.
   let token = "";
   if (decision === "approve") {
-    token = prompt("Enter the approval token shown in the server terminal (blank if disabled):") || "";
+    const field = document.getElementById("tok-" + id);
+    token = field ? field.value.trim() : "";
   }
   const res = await fetch(`/approvals/${id}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
