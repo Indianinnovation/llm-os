@@ -1017,7 +1017,7 @@ async function loadApprovals() {
             <button class="btn primary" onclick="decide('${esc(p.id)}','approve')">Approve &amp; run</button>
             <button class="btn danger" onclick="decide('${esc(p.id)}','reject')">Reject</button>
           </div>
-          ${tokenReq ? `<span class="sub" style="font-size:11px">token: shown by the launcher (also in .llmos_kernel.log)</span>` : ""}
+          ${tokenReq ? `<span class="sub" style="font-size:11px">token: shown by the launcher on the terminal that started the kernel</span>` : ""}
         </div>
       </div>
       ${preview ? `<div class="artifact" style="margin-top:12px">

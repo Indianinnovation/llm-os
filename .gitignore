@@ -30,3 +30,4 @@ mcp_manifest.json
 .llmos_kernel.log
 .llmos_ui.log
 audit/.salt
+audit/.approval_token

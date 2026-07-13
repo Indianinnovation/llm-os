@@ -4,6 +4,7 @@ desktop app) goes through this single routed entry point."""
 import collections
 import hmac
 import json
+import os
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -89,11 +90,22 @@ _docs = None
 _convos: ConversationStore = None
 _schedules: ScheduleStore = None
 _scheduler: Scheduler = None
-# A second factor for approving a gated tool, minted at boot and printed only
-# to the server's stdout — never returned over HTTP. It makes the approver a
-# different actor from the proposer: a caller that can only reach the API
-# cannot read it. None = not required (tests, or LLM_OS_APPROVAL_TOKEN=0).
+# A second factor for approving a gated tool, minted at boot and written to a
+# 0600 file — never returned over HTTP, never in the world-readable log. It
+# makes the approver a different actor from the proposer: a caller that can
+# only reach the API cannot read it. None = not required (tests, or
+# LLM_OS_APPROVAL_TOKEN=0).
 _approval_token: str = None
+
+# The 0600 file the launcher reads the token from. Lives beside the audit salt,
+# which is handled the same way.
+APPROVAL_TOKEN_FILE = config.AUDIT_DIR / ".approval_token"
+
+
+def _write_approval_token(token: str) -> None:
+    APPROVAL_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    APPROVAL_TOKEN_FILE.write_text(token)
+    os.chmod(APPROVAL_TOKEN_FILE, 0o600)
 
 
 def _verify_model_or_die(audit: AuditLog) -> None:
@@ -155,14 +167,14 @@ def _startup() -> None:
     _kernel = Kernel(registry=registry, memory=memory, audit=audit,
                      approvals=approvals)
 
-    # Second factor for approving a gated tool (see _approval_token). Printed
-    # here to stdout only; a legitimate operator reads it from the terminal
-    # that launched the kernel, an HTTP-only caller never sees it.
+    # Second factor for approving a gated tool (see _approval_token). Written
+    # to a 0600 file — NOT to stdout, which the launcher redirects into a
+    # world-readable log where a local process could read the token and defeat
+    # its whole purpose. The launcher reads this file and shows it on the
+    # operator's own terminal; an HTTP-only caller never sees it.
     if config.APPROVAL_TOKEN_REQUIRED and config.APPROVAL_TOOLS:
-        _approval_token = secrets.token_hex(4)
-        print(f"\n  🔑 Approval token for this session: {_approval_token}\n"
-              f"     Enter it in the console to approve a gated tool. "
-              f"(disable: LLM_OS_APPROVAL_TOKEN=0)\n", flush=True)
+        _approval_token = secrets.token_hex(16)
+        _write_approval_token(_approval_token)
 
     # Scheduled agents: the OS working while you sleep. Jobs run through
     # this same kernel, so gated tools still need a human — a 3am job

@@ -66,12 +66,20 @@ def start_native() -> int:
             print(f"  {RED}port 8000 is taken by another process — stop it first{RESET}")
             return 1
     else:
+        # 0600 the kernel log: it holds request access lines and, historically,
+        # the approval token — no other local user should be able to read it.
+        log_fd = os.open(str(PROJECT_ROOT / ".llmos_kernel.log"),
+                         os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.fchmod(log_fd, 0o600)  # O_CREAT mode is ignored if the file existed
+        except (AttributeError, OSError):
+            pass  # fchmod is POSIX-only; Windows uses ACLs
         subprocess.Popen(
             [python, "-m", "uvicorn", "llm_os.api:app", "--port", "8000"],
             cwd=PROJECT_ROOT, env=env, start_new_session=True,
-            stdout=open(PROJECT_ROOT / ".llmos_kernel.log", "w"),
-            stderr=subprocess.STDOUT,
+            stdout=log_fd, stderr=subprocess.STDOUT,
         )
+        os.close(log_fd)
         print("  starting kernel on :8000 …")
 
     if _port_in_use(8501):
@@ -99,7 +107,7 @@ def start_native() -> int:
 
     print(f"\n{GREEN}{BOLD}LLM OS is up.{RESET}  UI: http://localhost:8501  ·  "
           f"API: http://localhost:8000/docs\n")
-    token = _approval_token_from_log()
+    token = _approval_token_from_file()
     if token:
         print(f"  {BOLD}🔑 Approval token: {token}{RESET}")
         print(f"  {DIM}Type it in the console to approve a gated tool "
@@ -107,21 +115,16 @@ def start_native() -> int:
     return 0
 
 
-def _approval_token_from_log(log_path: Path = None) -> str:
-    """Lift the per-boot approval token the kernel printed into its log, so
-    the launcher can show it on the operator's actual terminal. It is read
-    from a local file by the local user — never sent over HTTP."""
-    log_path = log_path or (PROJECT_ROOT / ".llmos_kernel.log")
+def _approval_token_from_file(token_path: Path = None) -> str:
+    """Read the per-boot approval token from the 0600 file the kernel wrote,
+    so the launcher can show it on the operator's own terminal. Read from a
+    local owner-only file by the local user — never from the log, never over
+    HTTP."""
+    token_path = token_path or (PROJECT_ROOT / "audit" / ".approval_token")
     try:
-        # The kernel writes the token line with a 🔑; read as UTF-8 so this
-        # does not crash on Windows' cp1252 default.
-        text = log_path.read_text(encoding="utf-8", errors="replace")
-        for line in text.splitlines():
-            if "Approval token for this session:" in line:
-                return line.rsplit(":", 1)[-1].strip()
+        return token_path.read_text(encoding="utf-8").strip()
     except OSError:
-        pass
-    return ""
+        return ""
 
 
 def start_docker() -> int:

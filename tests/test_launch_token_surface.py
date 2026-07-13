@@ -1,30 +1,36 @@
-"""The launcher must surface the approval token on the operator's terminal.
+"""The launcher surfaces the approval token on the operator's terminal.
 
-The kernel prints the token to its stdout, which the launcher redirects to
-.llmos_kernel.log — so without this, a user running scripts/launch.py never
-sees the token they are then asked for. The launcher lifts it back out of the
-log and prints it.
+The kernel writes the token to a 0600 file (not the world-readable log, where
+a local process could read it and self-approve). The launcher reads that file
+and prints the token to the operator's own terminal, so a user running
+scripts/launch.py sees the token they are then asked for.
 """
 
-from scripts.launch import _approval_token_from_log
+from scripts.launch import _approval_token_from_file
 
 
-def test_token_is_lifted_from_the_log(tmp_path):
-    log = tmp_path / "kernel.log"
-    log.write_text(
-        "starting...\n"
-        "  🔑 Approval token for this session: 4cf55a15\n"
-        "     Enter it in the console...\n",
-        encoding="utf-8",   # the 🔑 must not depend on the platform's codec
-    )
-    assert _approval_token_from_log(log) == "4cf55a15"
+def test_token_is_read_from_the_file(tmp_path):
+    token_file = tmp_path / ".approval_token"
+    token_file.write_text("4cf55a15deadbeef", encoding="utf-8")
+    assert _approval_token_from_file(token_file) == "4cf55a15deadbeef"
 
 
-def test_no_token_line_returns_empty(tmp_path):
-    log = tmp_path / "kernel.log"
-    log.write_text("starting…\nkernel ok\n")
-    assert _approval_token_from_log(log) == ""
+def test_missing_file_returns_empty(tmp_path):
+    assert _approval_token_from_file(tmp_path / "nope") == ""
 
 
-def test_missing_log_returns_empty(tmp_path):
-    assert _approval_token_from_log(tmp_path / "nope.log") == ""
+def test_the_token_is_written_0600_not_to_the_log(tmp_path, monkeypatch):
+    # The security property: the token lands in an owner-only file, never in
+    # the kernel log a second user could read.
+    import stat
+
+    from llm_os import api, config
+
+    monkeypatch.setattr(config, "AUDIT_DIR", tmp_path)
+    monkeypatch.setattr(api, "APPROVAL_TOKEN_FILE", tmp_path / ".approval_token")
+    api._write_approval_token("s3cr3t-token-value")
+
+    written = tmp_path / ".approval_token"
+    assert written.read_text() == "s3cr3t-token-value"
+    mode = stat.S_IMODE(written.stat().st_mode)
+    assert mode == 0o600, f"token file is {oct(mode)}, expected 0o600"

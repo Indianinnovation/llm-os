@@ -26,6 +26,7 @@ Exit code 0 = all checks passed.
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -103,7 +104,7 @@ def component_pids() -> list:
                 capture_output=True, text=True, timeout=10,
             ).stdout
             pids.update(int(p) for p in out.split())
-        except (subprocess.SubprocessError, ValueError):
+        except (subprocess.SubprocessError, ValueError, OSError):
             continue
     return sorted(pids)
 
@@ -133,7 +134,7 @@ class EgressMonitor(threading.Thread):
                     match = pattern.search(line)
                     if match and not _is_loopback(match.group(1)):
                         self.violations.setdefault(match.group(1), line.strip())
-            except subprocess.SubprocessError:
+            except (subprocess.SubprocessError, OSError):
                 pass
             self._halt.wait(SAMPLE_INTERVAL_S)
 
@@ -259,6 +260,17 @@ def main() -> int:
 
     print(f"{BOLD}🛫 LLM OS — Airplane-Mode Verification{RESET}")
     started = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # This verifier samples lsof to observe every socket the workload opens.
+    # Without it (Windows, minimal Linux) we cannot see connections at all —
+    # and reporting "zero egress" we never checked would be a false all-clear.
+    # Say so plainly and stop, rather than crash or lie.
+    if not shutil.which("lsof"):
+        print(f"{RED}Cannot verify on this platform: 'lsof' is not available, so "
+              f"egress cannot be observed here.{RESET}")
+        print("Run this in the Docker sandbox (Linux, where lsof exists), or on "
+              "macOS/Linux natively.")
+        return 2
 
     section("[1/5] Connectivity mode")
     offline = machine_is_offline()
