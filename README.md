@@ -3,7 +3,7 @@
 **Everything runs on your machine. Nothing leaves it.**
 
 [![CI](https://github.com/Indianinnovation/llm-os/actions/workflows/ci.yml/badge.svg)](https://github.com/Indianinnovation/llm-os/actions/workflows/ci.yml)
-&nbsp;241 tests on Linux · macOS · Windows &nbsp;·&nbsp; Python 3.10 &nbsp;·&nbsp; Apache 2.0
+&nbsp;244 tests on Linux · macOS · Windows &nbsp;·&nbsp; Python 3.10 &nbsp;·&nbsp; Apache 2.0
 
 ![Demo: the script kills the Wi-Fi radio on camera, every routing path works offline, verification passes](docs/demo.gif)
 
@@ -636,7 +636,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-241 tests: sandbox-escape attempts against the expression evaluator,
+244 tests: sandbox-escape attempts against the expression evaluator,
 path-traversal attacks on the file tool, audit-chain tamper detection,
 model digest-pinning enforcement, egress-sentinel behavior, approval-gate
 enforcement (a gated tool cannot execute without a human decision, and a
@@ -656,7 +656,7 @@ against it.
 
 ![CI demo: the latest GitHub Actions run pulled live from the public API and rendered as a Linux / macOS / Windows matrix, all three green](docs/ci_demo.gif)
 
-*Live from the public GitHub Actions API (no token): the latest completed run, its real commit, and all three platforms `✓ pass` — `ALL GREEN — 241 tests, three platforms, every push`. Full video: [docs/ci_demo.mp4](docs/ci_demo.mp4). Run it yourself: `./scripts/ci_demo.sh`.*
+*Live from the public GitHub Actions API (no token): the latest completed run, its real commit, and all three platforms `✓ pass`, every push. Full video: [docs/ci_demo.mp4](docs/ci_demo.mp4). Run it yourself: `./scripts/ci_demo.sh`.*
 
 
 Several of those tests exist because of real bugs this project shipped and

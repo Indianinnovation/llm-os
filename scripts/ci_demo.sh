@@ -63,7 +63,7 @@ for icon,label,m,state,name in rows:
 print()
 states = [r[3] for r in rows]
 if states and all(s == "pass" for s in states):
-    print(f"  {G}{B}  ALL GREEN — 241 tests, three platforms, every push.{X}")
+    print(f"  {G}{B}  ALL GREEN — 244 tests, three platforms, every push.{X}")
     print(f"  {D}  the one OS-specific piece — the audit file lock (fcntl / msvcrt){X}")
     print(f"  {D}  — is exercised on each. Nothing is macOS-only anymore.{X}")
 elif "fail" in states:
