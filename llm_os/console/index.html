@@ -1020,10 +1020,23 @@ async function loadApprovals() {
   }).join("") : "";
 }
 async function decide(id, decision) {
+  // Approving a gated tool needs the session token printed to the server
+  // terminal — the proposer (this page, over HTTP) cannot read it, so a human
+  // at the machine has to supply it. Rejecting is safe and needs nothing.
+  let token = "";
+  if (decision === "approve") {
+    token = prompt("Enter the approval token shown in the server terminal (blank if disabled):") || "";
+  }
   const res = await fetch(`/approvals/${id}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision, who: "console user" }),
+    body: JSON.stringify({ decision, who: "console user", token }),
   });
+  if (res.status === 403) {
+    loadApprovals();
+    const b = bubble("bot", md("**Not approved.** The token did not match — nothing ran. It is printed in the terminal that launched the kernel."));
+    b.classList.remove("streaming");
+    return;
+  }
   const d = await res.json().catch(() => ({}));
   loadApprovals();
 

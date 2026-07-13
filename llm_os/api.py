@@ -2,7 +2,9 @@
 desktop app) goes through this single routed entry point."""
 
 import collections
+import hmac
 import json
+import secrets
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -86,6 +88,11 @@ _docs = None
 _convos: ConversationStore = None
 _schedules: ScheduleStore = None
 _scheduler: Scheduler = None
+# A second factor for approving a gated tool, minted at boot and printed only
+# to the server's stdout — never returned over HTTP. It makes the approver a
+# different actor from the proposer: a caller that can only reach the API
+# cannot read it. None = not required (tests, or LLM_OS_APPROVAL_TOKEN=0).
+_approval_token: str = None
 
 
 def _verify_model_or_die(audit: AuditLog) -> None:
@@ -106,6 +113,7 @@ def _verify_model_or_die(audit: AuditLog) -> None:
 @app.on_event("startup")
 def _startup() -> None:
     global _kernel, _mcp, _sentinel, _docs, _convos, _schedules, _scheduler
+    global _approval_token
     audit = AuditLog(config.AUDIT_DIR)
     _verify_model_or_die(audit)
     _sentinel = EgressSentinel(audit)
@@ -146,6 +154,15 @@ def _startup() -> None:
     approvals = ApprovalStore(config.APPROVALS_FILE)
     _kernel = Kernel(registry=registry, memory=memory, audit=audit,
                      approvals=approvals)
+
+    # Second factor for approving a gated tool (see _approval_token). Printed
+    # here to stdout only; a legitimate operator reads it from the terminal
+    # that launched the kernel, an HTTP-only caller never sees it.
+    if config.APPROVAL_TOKEN_REQUIRED and config.APPROVAL_TOOLS:
+        _approval_token = secrets.token_hex(4)
+        print(f"\n  🔑 Approval token for this session: {_approval_token}\n"
+              f"     Enter it in the console to approve a gated tool. "
+              f"(disable: LLM_OS_APPROVAL_TOKEN=0)\n", flush=True)
 
     # Scheduled agents: the OS working while you sleep. Jobs run through
     # this same kernel, so gated tools still need a human — a 3am job
@@ -236,6 +253,7 @@ def delete_conversation(conversation_id: str) -> dict:
 class Decision(BaseModel):
     decision: str = Field("approve", pattern="^(approve|reject)$")
     who: str = "user"
+    token: str = ""
 
 
 @app.get("/approvals")
@@ -256,6 +274,19 @@ def decide_approval(approval_id: str, decision: Decision) -> dict:
     store = _kernel.approvals
     if store is None:
         raise HTTPException(400, "Approvals are not configured.")
+
+    # A gated tool RUNS on approval, so approving needs the out-of-band token
+    # (rejecting is always safe and does not). Checked before decide() so a
+    # tokenless caller cannot even move the request out of PENDING.
+    if decision.decision == "approve" and _approval_token is not None:
+        if not hmac.compare_digest(decision.token, _approval_token):
+            _kernel.audit.append(
+                "approval_denied",
+                {"approval_id": approval_id, "reason": "missing or wrong token"},
+            )
+            raise HTTPException(403, "Approval requires the session token printed "
+                                     "to the server console.")
+
     record = store.decide(approval_id, decision.decision, decision.who)
     if "error" in record:
         raise HTTPException(400, record["error"])

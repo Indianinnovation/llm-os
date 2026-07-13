@@ -47,6 +47,11 @@ APPROVAL_TOOLS = [
     if t.strip()
 ]
 
+# Approving a gated tool requires a per-boot token printed to the server's
+# stdout, so the caller that PROPOSED an action (over HTTP) cannot also
+# APPROVE it. Default on; LLM_OS_APPROVAL_TOKEN=0 for a pure single-user box.
+APPROVAL_TOKEN_REQUIRED = os.environ.get("LLM_OS_APPROVAL_TOKEN", "1") != "0"
+
 # Retrieval grounding: a floor, not a filter.
 #
 # A single threshold cannot referee heterogeneous corpora — measured on this
