@@ -114,3 +114,39 @@ def test_audit_export_is_ndjson(client):
     assert len(lines) == 3
     assert json.loads(lines[0])["event"] == "tool_execution"
     assert "attachment" in response.headers["content-disposition"]
+
+
+# ── POST /audit/event: console decisions land in the hash chain ─────────────
+
+def test_console_event_is_chained_and_namespaced(client):
+    response = client.post("/audit/event", json={
+        "event": "remediation_decision",
+        "payload": {"action_id": "ACT-1", "decision": "APPROVED",
+                    "decided_by": "dilip"},
+    })
+    assert response.status_code == 200
+    audit_id = response.json()["audit_id"]
+
+    log = client.get("/audit?n=5").json()
+    assert log["chain_valid"] is True
+    record = next(r for r in log["records"] if r["id"] == audit_id)
+    # Forced into the console.* namespace — kernel events can't be spoofed.
+    assert record["event"] == "console.remediation_decision"
+    assert record["payload"]["decision"] == "APPROVED"
+
+
+def test_console_event_payload_cannot_break_the_chain(client):
+    # A payload naming chain fields must not override them: it is nested
+    # under "payload", so verification still passes.
+    response = client.post("/audit/event", json={
+        "event": "x", "payload": {"prev_hash": "0" * 64, "hash": "evil", "id": "evil"},
+    })
+    assert response.status_code == 200
+    assert client.get("/audit?n=5").json()["chain_valid"] is True
+
+
+def test_console_event_rejects_bad_names_and_oversize(client):
+    assert client.post("/audit/event", json={"event": "Bad Name!"}).status_code == 422
+    assert client.post("/audit/event", json={
+        "event": "big", "payload": {"blob": "x" * 5000},
+    }).status_code == 413

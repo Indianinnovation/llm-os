@@ -474,6 +474,31 @@ def audit(n: int = Query(20, ge=1, le=1000)) -> dict:
     return {"chain_valid": log.verify_chain(), "records": log.tail(n)}
 
 
+class ConsoleEvent(BaseModel):
+    event: str = Field(..., min_length=1, max_length=80, pattern=r"^[a-z0-9_.]+$")
+    payload: dict = Field(default_factory=dict)
+
+
+@app.post("/audit/event")
+def audit_event(request: ConsoleEvent) -> dict:
+    """Append a console-originated event to the hash chain.
+
+    Lets local trusted UIs (the NOC dashboard's human approval step, for
+    one) land their decisions in the same tamper-evident chain as kernel
+    events. The event name is forced into the `console.` namespace so a
+    caller can never impersonate a kernel-native event type, and the
+    payload is nested under one key so it cannot override the chain
+    fields (prev_hash, hash, id, ts) and break verification. Structural
+    fields inside it (ids, decisions, who) stay readable in redacted
+    mode; named content keys are committed as everywhere else.
+    """
+    if len(json.dumps(request.payload, default=str)) > 4000:
+        raise HTTPException(413, "Payload too large for an audit event.")
+    log = _kernel.audit if _kernel else AuditLog(config.AUDIT_DIR)
+    audit_id = log.append(f"console.{request.event}", {"payload": request.payload})
+    return {"audit_id": audit_id, "event": f"console.{request.event}"}
+
+
 # ── System console: the control plane ────────────────────────────────────────
 
 CONSOLE_HTML = Path(__file__).parent / "console" / "index.html"
